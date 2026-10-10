@@ -1,0 +1,33 @@
+[Image #3]
+
+---
+
+is there a entire dashboard where i can see when i added a checkpoint
+
+---
+
+currently no session is running right?
+
+---
+
+[Image #4] [Image #5] see done
+
+---
+
+I will push both the commits together.
+
+---
+
+[Image #6]
+
+---
+
+dont aspply sections until i have pushed one so stash section 2 changes
+
+---
+
+done section 2 is pushed
+
+---
+
+done section 1 is pushed
