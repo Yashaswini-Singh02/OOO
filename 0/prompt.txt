@@ -1,0 +1,21 @@
+entire graph init-agents --repo . what does this comand do?
+
+---
+
+claude --continue
+
+---
+
+also you dont comit anything it will be me who will be commiting and no commit should carry co authored trailer
+
+---
+
+no our commit messages will be feat(the_surface_we_touch):statement
+
+---
+
+[Image #1] correct?
+
+---
+
+[Image #2]
