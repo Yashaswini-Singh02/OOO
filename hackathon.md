@@ -6,7 +6,7 @@ Oct 10–12, 2026. Python 3.12 · LangGraph · neatlogs · Entire · cfo.ai.
 
 | What | Link / ID |
 | --- | --- |
-| First Entire checkpoint | |
+| First Entire checkpoint | `01M4K4X70XBEWAR585HJYFT0FD` |
 | Trace 1 — failure | |
 | Trace 2 — recovery | |
 | Trace 3 — before / after | |
