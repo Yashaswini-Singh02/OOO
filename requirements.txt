@@ -1,0 +1,4 @@
+neatlogs[anthropic,langchain,langgraph]
+langgraph
+langchain-anthropic
+python-dotenv
