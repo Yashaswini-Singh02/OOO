@@ -50,6 +50,10 @@ CREATE TABLE IF NOT EXISTS nudges (
     at       TEXT NOT NULL,
     trigger  TEXT
 );
+CREATE TABLE IF NOT EXISTS kv (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS locations (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
     at      TEXT NOT NULL,
@@ -190,6 +194,16 @@ def load_locations(conn: sqlite3.Connection, limit: int = 2000) -> list:
 def last_location(conn: sqlite3.Connection) -> dict | None:
     row = conn.execute("SELECT at, lat, lng, weather FROM locations ORDER BY id DESC LIMIT 1").fetchone()
     return dict(row) if row else None
+
+
+def set_kv(conn: sqlite3.Connection, key: str, value) -> None:
+    conn.execute("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", (key, json.dumps(value)))
+    conn.commit()
+
+
+def get_kv(conn: sqlite3.Connection, key: str, default=None):
+    row = conn.execute("SELECT value FROM kv WHERE key = ?", (key,)).fetchone()
+    return json.loads(row["value"]) if row else default
 
 
 def load_profile(conn: sqlite3.Connection) -> dict:

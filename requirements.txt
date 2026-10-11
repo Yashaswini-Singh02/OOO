@@ -1,4 +1,6 @@
 neatlogs[openai,langchain,langgraph]
 langgraph
 openai
+pydantic
 python-dotenv
+requests

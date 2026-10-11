@@ -27,5 +27,5 @@ def taste(state: RoveState) -> dict:
         {**c, "score": round(score(c, tag_weights) + adjust(c, state), 3)}
         for c in state.get("candidates", [])
     ]
-    # sorted() is stable, so ties keep scout's order
-    return {"ranked": sorted(scored, key=lambda c: c["score"], reverse=True)}
+    # ties go to the better-rated place; sorted() is stable, so remaining ties keep scout's order
+    return {"ranked": sorted(scored, key=lambda c: (c["score"], c.get("rating") or 0), reverse=True)}

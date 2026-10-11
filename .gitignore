@@ -11,6 +11,7 @@ __pycache__/
 
 # local data
 store.db
+data/users/
 
 # macOS
 .DS_Store

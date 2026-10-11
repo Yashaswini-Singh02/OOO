@@ -25,7 +25,8 @@ GOOGLE_FIELDS = ",".join(
     f"places.{f}"
     for f in (
         "id", "displayName", "location", "primaryType", "types", "businessStatus",
-        "currentOpeningHours.openNow", "googleMapsUri", "rating",
+        "currentOpeningHours.openNow", "googleMapsUri", "rating", "userRatingCount",
+        "primaryTypeDisplayName", "shortFormattedAddress", "editorialSummary",
     )
 )
 GOOGLE_MAX_RADIUS_M = 50_000
@@ -175,6 +176,10 @@ def _from_google(p: dict, category: str, kind: str = "place") -> dict:
         "cost_inr": 0,
         "cost_known": False,
         "rating": p.get("rating"),
+        "rating_count": p.get("userRatingCount"),
+        "what": p.get("primaryTypeDisplayName", {}).get("text"),
+        "address": p.get("shortFormattedAddress"),
+        "summary": p.get("editorialSummary", {}).get("text"),
         "exists": status != "CLOSED_PERMANENTLY",
         # temporarily closed is a real place that is shut, not a missing one
         "open_now": False if status == "CLOSED_TEMPORARILY" else p.get("currentOpeningHours", {}).get("openNow"),
