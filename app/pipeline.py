@@ -38,7 +38,8 @@ def build():
     g.add_node("verifier", verifier)
     g.add_edge(START, "trigger")
     g.add_edge("trigger", "scout")
-    g.add_edge("scout", "taste")
+    # a replan with nothing left to search differently ends the run there
+    g.add_conditional_edges("scout", lambda s: "stop" if s.get("exhausted") else "go", {"stop": END, "go": "taste"})
     g.add_edge("taste", "budget")
     g.add_edge("budget", "wardrobe")
     g.add_edge("wardrobe", "planner")

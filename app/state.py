@@ -38,3 +38,5 @@ class RoveState(TypedDict, total=False):
     avoid: list  # plain strings: what not to book, and why
     nudge: Optional[dict]
     replans: int  # loop guard, max 2
+    search: dict  # the search scout last ran: {query, radius_m, categories, tried}
+    exhausted: bool  # a replan found nothing left to search differently, so the run ends

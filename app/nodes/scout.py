@@ -21,7 +21,9 @@ SYSTEM = (
     "Write a short place-search query (a few words, no city name) suited to the "
     "context, a search radius in metres between 1000 and 60000, and one to four place "
     f"categories chosen only from: {', '.join(CATEGORIES)}. In rain prefer indoor "
-    "categories. If venues were already rejected, search for something different from them."
+    "categories. Suit the local time: the suggestion is for right now, so do not look for "
+    "sunset spots or night markets in the morning. "
+    "If venues were already rejected, search for something different from them."
 )
 
 
@@ -39,6 +41,7 @@ def plan_queries(state: RoveState) -> ScoutQueries:
         f"City: {state.get('city', 'unknown')}\n"
         f"District: {state.get('district', 'unknown')}\n"
         f"Weather: {state.get('weather', 'unknown')}\n"
+        f"Local time: {(state.get('now') or '')[11:16] or 'unknown'}\n"
         f"Days left on the trip: {state.get('days_left', 'unknown')}\n"
         f"Tags the traveller likes most: {', '.join(liked) or 'none recorded'}\n"
         f"What the traveller said about themselves: {'; '.join(state.get('notes', [])) or 'nothing'}\n"
@@ -155,16 +158,53 @@ def liked_categories(state: RoveState) -> list:
     return categories_for(top)
 
 
+MAX_RADIUS_M = 60_000  # the furthest a search may reach when the trigger sets no limit
+MAX_REPLANS = 2  # kept in step with the verifier's route()
+FRESH_CATEGORIES = 3  # how many untried categories a replan adds
+
+
+def widen(prior: dict, state: RoveState, replan: int) -> ScoutQueries | None:
+    """The search for a replan, worked out without a model call. Asking the model again
+    gave the same query and the same radius, so the same refused venues came back and the
+    replan found nothing. A replan now reaches further out (halfway to the limit, then all
+    the way) and adds categories not searched yet. None when there is nothing left to
+    change, which ends the run instead of repeating a search that cannot succeed.
+    """
+    cap = max(state.get("max_radius_m", MAX_RADIUS_M), prior["radius_m"])
+    left = max(MAX_REPLANS - replan + 1, 1)
+    radius = round(prior["radius_m"] + (cap - prior["radius_m"]) / left)
+    grew = radius > prior["radius_m"]
+    fresh = [] if state.get("only") else [
+        c for c in CATEGORIES if c not in prior["tried"] and c not in state.get("dislikes", [])
+    ][:FRESH_CATEGORIES]
+    if not grew and not fresh:
+        return None
+    return ScoutQueries(
+        place_query=prior["query"], radius_m=radius, categories=(prior["categories"] if grew else []) + fresh
+    )
+
+
 def scout(state: RoveState) -> dict:
     warnings = list(state.get("warnings", []))
     # Loop guard: scout already ran if candidates exist, so this entry is a replan.
     replans = state.get("replans", 0) + (1 if "candidates" in state else 0)
 
+    replanning = "candidates" in state
     if state.get("trigger") == "speciality":
+        if replanning:  # the craft table and the shop search would give the same answer again
+            return {"candidates": [], "replans": replans, "warnings": warnings, "exhausted": True}
         return {"candidates": scout_shops(state), "replans": replans, "warnings": warnings}
 
     only = state.get("only", [])
-    if only and categories_for(only):
+    prior = state.get("search") if replanning else None
+    if prior and state.get("wants"):
+        # a plan is replanned to fix its schedule, so the same places are fetched again
+        queries = ScoutQueries(place_query=prior["query"], radius_m=prior["radius_m"], categories=prior["categories"])
+    elif prior:
+        queries = widen(prior, state, replans)
+        if queries is None:
+            return {"candidates": [], "replans": replans, "warnings": warnings, "exhausted": True}
+    elif only and categories_for(only):
         # the traveller named the kind of place, so there is nothing for the model to decide
         queries = ScoutQueries(
             place_query=" ".join(only),
@@ -187,6 +227,10 @@ def scout(state: RoveState) -> dict:
         c for c in DEFAULT_CATEGORIES if c not in dislikes
     ]
     radius = min(queries.radius_m, state.get("max_radius_m", queries.radius_m))
+    search = {
+        "query": queries.place_query, "radius_m": radius, "categories": queries.categories,
+        "tried": sorted(set((prior or {}).get("tried", [])) | set(queries.categories)),
+    }
     places = tools.place_search(
         queries.place_query, state.get("lat", 0.0), state.get("lng", 0.0), radius, queries.categories
     )
@@ -217,4 +261,4 @@ def scout(state: RoveState) -> dict:
         candidates = [c for c in candidates if c["id"] in saved or not unwanted(c, dislikes)]
         if only:
             candidates = [c for c in candidates if kinds_of(c) & {k.lower() for k in only}]
-    return {"candidates": candidates, "replans": replans, "warnings": warnings}
+    return {"candidates": candidates, "replans": replans, "warnings": warnings, "search": search}

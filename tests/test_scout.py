@@ -21,7 +21,7 @@ class ScoutTest(unittest.TestCase):
     def test_writes_candidates_from_places_and_events(self):
         with patch.object(scout_module, "plan_queries", return_value=QUERIES):
             out = scout({**CONTEXT, "replans": 0})
-        self.assertEqual(set(out), {"candidates", "replans", "warnings"})
+        self.assertEqual(set(out), {"candidates", "replans", "warnings", "search"})
         kinds = [c["kind"] for c in out["candidates"]]
         self.assertEqual(kinds.count("place"), 7)
         self.assertEqual(kinds.count("event"), 2)
