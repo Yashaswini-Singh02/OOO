@@ -1,0 +1,75 @@
+[Image #3]
+
+---
+
+is there a entire dashboard where i can see when i added a checkpoint
+
+---
+
+currently no session is running right?
+
+---
+
+[Image #4] [Image #5] see done
+
+---
+
+I will push both the commits together.
+
+---
+
+[Image #6]
+
+---
+
+dont aspply sections until i have pushed one so stash section 2 changes
+
+---
+
+done section 2 is pushed
+
+---
+
+done section 1 is pushed
+
+---
+
+[Image #7] got this
+
+---
+
+[Image #8] now what to do?
+
+---
+
+that failed because i pushed tgrough source control
+
+---
+
+How much of the work is done, give me a brief
+
+---
+
+Let's continue working, I have done all 3. So begin further and complete the dev work
+
+---
+
+How can I test the latest changes
+
+---
+
+<pasted_content id="d220">
+yashaswini@Yashaswinis-MacBook-Pro-2 travel_agent % python -m app.check_tools
+zsh: command not found: python
+yashaswini@Yashaswinis-MacBook-Pro-2 travel_agent % python3 -m app.check_tools
+Traceback (most recent call last):
+  File "<frozen runpy>", line 203, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/yashaswini/Desktop/travel_agent/app/check_tools.py", line 7, in <module>
+    import app.trace  # noqa: F401  MUST be the first import in every entry point
+    ^^^^^^^^^^^^^^^^
+  File "/Users/yashaswini/Desktop/travel_agent/app/trace.py", line 7, in <module>
+    from dotenv import load_dotenv
+ModuleNotFoundError: No module named 'dotenv'
+yashaswini@Yashaswinis-MacBook-Pro-2 travel_agent %
+</pasted_content id="d220">
