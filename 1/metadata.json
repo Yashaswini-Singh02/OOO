@@ -1,0 +1,182 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4P5DMDVQJSW5W588372HSSR",
+  "session_id": "64e36783-176f-4c5e-b159-187ecb030063",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-11T19:00:50.55129Z",
+  "branch": "main",
+  "checkpoints_count": 16,
+  "save_step_count": 16,
+  "files_touched": [
+    "app/assistant.py",
+    "app/messages.py",
+    "app/nodes/feed.py",
+    "app/nodes/scout.py",
+    "app/nodes/taste.py",
+    "app/providers.py",
+    "app/state.py",
+    "app/store.py",
+    "app/telegram.py",
+    "app/tools.py",
+    "fixtures/videos_goa.json",
+    "tests/test_assistant.py",
+    "tests/test_scout.py",
+    "tests/test_telegram.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5[1m]",
+  "turn_id": "05b04464a3e7",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 164,
+    "cache_creation_tokens": 267523,
+    "cache_read_tokens": 13597966,
+    "output_tokens": 123801,
+    "api_call_count": 68
+  },
+  "session_metrics": {
+    "turn_count": 16
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-10-11T19:00:50.425284Z",
+    "agent_lines": 1323,
+    "agent_removed": 140,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 10,
+    "total_committed": 1323,
+    "total_lines_changed": 1473,
+    "agent_percentage": 99.32111337406653,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 369,
+      "user_lines_removed": 10,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "app/assistant.py": 102,
+        "app/messages.py": 57,
+        "app/providers.py": 100,
+        "app/telegram.py": 22,
+        "app/tools.py": 25,
+        "fixtures/videos_goa.json": 6,
+        "tests/test_assistant.py": 49,
+        "tests/test_telegram.py": 8
+      },
+      "user_removed_per_file": {
+        "app/assistant.py": 4,
+        "app/telegram.py": 1,
+        "fixtures/videos_goa.json": 3,
+        "tests/test_telegram.py": 2
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 369,
+      "agent_lines_removed": 10
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 382,
+      "agent_lines_removed": 14
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 415,
+      "agent_lines_removed": 20
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 527,
+      "agent_lines_removed": 52
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 687,
+      "agent_lines_removed": 55
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 760,
+      "agent_lines_removed": 66
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1035,
+      "agent_lines_removed": 108
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1160,
+      "agent_lines_removed": 108
+    },
+    {
+      "checkpoint_number": 10,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1324,
+      "agent_lines_removed": 113
+    },
+    {
+      "checkpoint_number": 11,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1426,
+      "agent_lines_removed": 123
+    },
+    {
+      "checkpoint_number": 12,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1507,
+      "agent_lines_removed": 133
+    },
+    {
+      "checkpoint_number": 13,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1507,
+      "agent_lines_removed": 133
+    },
+    {
+      "checkpoint_number": 14,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1507,
+      "agent_lines_removed": 133
+    },
+    {
+      "checkpoint_number": 15,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1601,
+      "agent_lines_removed": 148
+    },
+    {
+      "checkpoint_number": 16,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1702,
+      "agent_lines_removed": 150
+    }
+  ]
+}
