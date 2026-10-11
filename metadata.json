@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4N7QWAFHKYT5VXEK02D9058",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "app/assistant.py",
+    "app/messages.py",
+    "app/nodes/feed.py",
+    "app/nodes/scout.py",
+    "app/providers.py",
+    "app/state.py",
+    "app/telegram.py",
+    "app/tools.py",
+    "tests/test_assistant.py",
+    "tests/test_relevance.py",
+    "tests/test_telegram.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 496,
+    "cache_creation_tokens": 644924,
+    "cache_read_tokens": 50659325,
+    "output_tokens": 257211,
+    "api_call_count": 181
+  }
+}
