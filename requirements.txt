@@ -1,4 +1,4 @@
-neatlogs[anthropic,langchain,langgraph]
+neatlogs[openai,langchain,langgraph]
 langgraph
-langchain-anthropic
+openai
 python-dotenv
