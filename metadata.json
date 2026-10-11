@@ -1,0 +1,38 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4MZSQK67AFRPV9D2SWD81YX",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "app/geo.py",
+    "app/graph.py",
+    "app/nodes/feed.py",
+    "app/nodes/planner.py",
+    "app/nodes/verifier.py",
+    "app/pipeline.py",
+    "app/scenarios.py",
+    "app/state.py",
+    "fixtures/goa_2day.json",
+    "fixtures/places_goa.json",
+    "tests/__init__.py",
+    "tests/test_pipeline.py",
+    "tests/test_planner.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 232,
+    "cache_creation_tokens": 444121,
+    "cache_read_tokens": 13940108,
+    "output_tokens": 88374,
+    "api_call_count": 85
+  }
+}
