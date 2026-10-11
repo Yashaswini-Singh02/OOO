@@ -1,7 +1,8 @@
-"""The LangGraph state graph. No tracing import here, so tests can build it offline;
+"""The LangGraph state graph. No tracing setup here, so tests can build it offline;
 entry points import app.trace first and then this module.
 """
 from langgraph.graph import END, START, StateGraph
+from neatlogs import span
 
 from app import store
 from app.nodes.budget import budget
@@ -28,14 +29,13 @@ def trigger(state: RoveState) -> dict:
 
 def build():
     g = StateGraph(RoveState)
-    g.add_node("trigger", trigger)
-    g.add_node("scout", scout)
-    g.add_node("taste", taste)
-    g.add_node("budget", budget)
-    g.add_node("wardrobe", wardrobe)
-    g.add_node("planner", planner)
+    # each node is one step in the run's trace, with its tools and model calls beneath it;
+    # the verifier is already traced as a GUARDRAIL
+    steps = {"trigger": trigger, "scout": scout, "taste": taste, "budget": budget,
+             "wardrobe": wardrobe, "planner": planner, "feed": feed}
+    for name, node in steps.items():
+        g.add_node(name, span(kind="CHAIN", name=name)(node))
     g.add_node("verifier", verifier)
-    g.add_node("feed", feed)
     g.add_edge(START, "trigger")
     g.add_edge("trigger", "scout")
     g.add_edge("scout", "taste")
