@@ -1,18 +1,11 @@
-from math import asin, cos, radians, sin, sqrt
-
 from neatlogs import span
 
+from app.geo import distance_m
+from app.nodes.planner import day_conflict
 from app.state import RoveState
 
 # A reel that places a venue further than this from where it really is gets refused.
 MAX_REEL_MISMATCH_M = 50_000
-
-
-def distance_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
-    """Great-circle distance in metres (haversine)."""
-    dlat, dlng = radians(lat2 - lat1), radians(lng2 - lng1)
-    a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlng / 2) ** 2
-    return 2 * 6_371_000 * asin(sqrt(a))
 
 
 def refusal(c: dict) -> str | None:
@@ -37,11 +30,32 @@ def verifier(state: RoveState) -> dict:
             bad.append({**c, "reason": reason})
         else:
             ok.append(c)
-    return {"verified": ok, "rejected": state.get("rejected", []) + bad}
+    out = {"verified": ok, "rejected": state.get("rejected", []) + bad}
+    if state.get("wants"):
+        out.update(check_plan(state, ok))
+    return out
+
+
+def check_plan(state: RoveState, ok: list) -> dict:
+    """Second layer for planned runs: every item verified, every want covered, every day feasible."""
+    by_id = {c["id"]: c for c in ok}
+    plan = state.get("plan", [])
+    new_conflicts = []
+    for day in sorted({p["day"] for p in plan}):
+        conflict = day_conflict([by_id[p["id"]] for p in plan if p["day"] == day and p["id"] in by_id])
+        if conflict:
+            new_conflicts.append({**conflict, "day": day})
+    all_verified = all(p["id"] in by_id for p in plan)
+    all_covered = {p["activity"] for p in plan} >= set(state["wants"])
+    return {
+        "conflicts": state.get("conflicts", []) + new_conflicts,
+        "plan_ok": bool(plan) and all_verified and all_covered and not new_conflicts,
+    }
 
 
 def route(state: RoveState) -> str:
-    if state.get("verified"):
+    passed = state.get("plan_ok") if state.get("wants") else state.get("verified")
+    if passed:
         return "feed"
     if state.get("replans", 0) < 2:
         return "replan"

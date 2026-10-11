@@ -6,6 +6,7 @@ from langgraph.graph import END, START, StateGraph
 from app import store
 from app.nodes.budget import budget
 from app.nodes.feed import feed
+from app.nodes.planner import planner
 from app.nodes.scout import scout
 from app.nodes.taste import taste
 from app.nodes.verifier import route, verifier
@@ -32,6 +33,7 @@ def build():
     g.add_node("taste", taste)
     g.add_node("budget", budget)
     g.add_node("wardrobe", wardrobe)
+    g.add_node("planner", planner)
     g.add_node("verifier", verifier)
     g.add_node("feed", feed)
     g.add_edge(START, "trigger")
@@ -39,7 +41,8 @@ def build():
     g.add_edge("scout", "taste")
     g.add_edge("taste", "budget")
     g.add_edge("budget", "wardrobe")
-    g.add_edge("wardrobe", "verifier")
+    g.add_edge("wardrobe", "planner")
+    g.add_edge("planner", "verifier")
     # The cycle: a failed gate sends the run back to scout, at most twice.
     g.add_conditional_edges(
         "verifier", route, {"feed": "feed", "replan": "scout", "give_up": END}
