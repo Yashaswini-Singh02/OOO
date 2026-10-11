@@ -4,6 +4,7 @@ them costs nothing; the graph (and its LLM call) runs only when one fires.
 """
 from datetime import datetime, timedelta
 
+from app import gi
 from app.geo import distance_m
 from app.hours import minutes_since_opening
 
@@ -14,6 +15,7 @@ JUST_OPENED_WITHIN_M = 5000
 ROUTINE_DAYS = 5  # this many days in a row with nowhere new
 ROUTINE_PLACES = 2  # e.g. home and office
 TOUCH_GRASS_COOLDOWN = timedelta(days=7)
+SPECIALITY_COOLDOWN = timedelta(days=7)
 
 # How far scout may look when each trigger fires.
 RADIUS_M = {
@@ -21,6 +23,7 @@ RADIUS_M = {
     "place_just_opened": 5000,
     "rain_starting": 10000,
     "touch_grass": 10000,
+    "speciality": 5000,
 }
 
 
@@ -72,12 +75,26 @@ def touch_grass(point: dict, history: list, nudges: list) -> bool:
     return len(set().union(*(by_day[day] for day in window))) <= ROUTINE_PLACES
 
 
+def speciality(point: dict, trip: dict, nudges: list) -> bool:
+    """True on a trip in a region with a craft of its own, once per SPECIALITY_COOLDOWN."""
+    if trip.get("days_left", 0) <= 0:
+        return False  # this one is for travelling, not for home
+    if not gi.crafts_for(trip.get("district", ""), trip.get("city", "")):
+        return False
+    now = datetime.fromisoformat(point["now"])
+    return not any(
+        n.get("trigger") == "speciality" and now - datetime.fromisoformat(n["at"]) < SPECIALITY_COOLDOWN
+        for n in nudges
+    )
+
+
 def fired(
     point: dict,
     previous: dict | None,
     saved: list,
     history: list | None = None,
     nudges: list | None = None,
+    trip: dict | None = None,
 ) -> str | None:
     """Name of the first trigger that fires for this update, or None."""
     if place_just_opened(point, saved):
@@ -88,4 +105,6 @@ def fired(
         return "rain_starting"
     if history and touch_grass(point, history, nudges or []):
         return "touch_grass"
+    if trip and speciality(point, trip, nudges or []):
+        return "speciality"
     return None

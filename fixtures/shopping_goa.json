@@ -1,0 +1,25 @@
+{
+  "city": "Goa",
+  "district": "North Goa",
+  "lat": 15.4989,
+  "lng": 73.8313,
+  "now": "2026-10-10T11:00:00+05:30",
+  "days_left": 2,
+  "weather": "clear",
+  "trigger": "speciality",
+  "max_radius_m": 5000,
+  "taste": {
+    "tags": {
+      "local": 0.5,
+      "craft": 0.3
+    },
+    "ratings": []
+  },
+  "budget": {
+    "alloc": {
+      "shopping": 2000
+    },
+    "spent": {}
+  },
+  "wardrobe": []
+}

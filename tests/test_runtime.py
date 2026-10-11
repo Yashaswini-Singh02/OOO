@@ -23,12 +23,14 @@ class RouteReplayTest(unittest.TestCase):
             [(n["at"][11:16], n["name"], n["trigger"]) for n in nudges],
             [
                 ("09:00", "Fontainhas Latin Quarter", "near_saved_spot"),
+                ("09:45", "Fixture Feni Store", "speciality"),
                 ("13:10", "Museum of Goa", "rain_starting"),
                 ("17:10", "Chapora Fort", "near_saved_spot"),
                 ("18:10", "Saturday Night Market, Arpora", "place_just_opened"),
             ],
         )
-        # 15 location updates, but the graph (and its LLM call) ran only when a trigger fired
+        # 15 location updates, but the graph ran only when a trigger fired, and the
+        # speciality run is a table lookup with no model call
         self.assertEqual(plan.call_count, 4)
         # never the same venue twice
         self.assertEqual(len({n["id"] for n in nudges}), len(nudges))

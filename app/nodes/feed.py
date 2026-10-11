@@ -28,5 +28,7 @@ def feed(state: RoveState) -> dict:
             "trigger": state.get("trigger"),
             "links": [v["url"] for v in videos],
             "source": top.get("source"),
+            "craft": top.get("craft"),
+            "gi_registered": top.get("gi_registered"),
         }
     }

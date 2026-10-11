@@ -162,6 +162,7 @@ def _google_post(url: str, body: dict) -> list:
 
 def _from_google(p: dict, category: str, kind: str = "place") -> dict:
     _, tags, activity, indoor = CATEGORIES[category]
+    status = p.get("businessStatus", "OPERATIONAL")
     return {
         "id": f"g-{p['id']}",
         "name": p["displayName"]["text"],
@@ -174,9 +175,9 @@ def _from_google(p: dict, category: str, kind: str = "place") -> dict:
         "cost_inr": 0,
         "cost_known": False,
         "rating": p.get("rating"),
-        # anything Google no longer lists as operating is treated as not found
-        "exists": p.get("businessStatus", "OPERATIONAL") == "OPERATIONAL",
-        "open_now": p.get("currentOpeningHours", {}).get("openNow"),
+        "exists": status != "CLOSED_PERMANENTLY",
+        # temporarily closed is a real place that is shut, not a missing one
+        "open_now": False if status == "CLOSED_TEMPORARILY" else p.get("currentOpeningHours", {}).get("openNow"),
         "source": p.get("googleMapsUri"),
     }
 

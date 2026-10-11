@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import openai
 from pydantic import BaseModel, ValidationError
 
-from app import tools
+from app import gi, tools
 from app.geo import distance_m
 from app.hours import is_open
 from app.providers import CATEGORIES, DEFAULT_CATEGORIES
@@ -75,10 +75,30 @@ def localise(c: dict, state: RoveState) -> dict:
     return out
 
 
+MAX_CRAFTS = 2  # one shop search per craft, so this bounds the cost of a shopping run
+
+
+def scout_shops(state: RoveState) -> list:
+    """Speciality shopping: a table lookup and a shop search. No model call."""
+    lat, lng = state.get("lat", 0.0), state.get("lng", 0.0)
+    district = state.get("district", "")
+    shops = []
+    for entry in gi.crafts_for(district, state.get("city", ""))[:MAX_CRAFTS]:
+        for shop in tools.shop_search(entry["craft"], district, lat, lng):
+            shops.append({**shop, "craft": entry["craft"], "gi_registered": entry["gi_registered"]})
+    skip = {r["id"] for r in state.get("rejected", [])} | set(state.get("recent", []))
+    radius = state.get("max_radius_m", DEFAULT_RADIUS_M)
+    shops = [localise(c, state) for c in shops if c["id"] not in skip]
+    return [c for c in shops if c.get("distance_m", 0) <= radius]
+
+
 def scout(state: RoveState) -> dict:
     warnings = list(state.get("warnings", []))
     # Loop guard: scout already ran if candidates exist, so this entry is a replan.
     replans = state.get("replans", 0) + (1 if "candidates" in state else 0)
+
+    if state.get("trigger") == "speciality":
+        return {"candidates": scout_shops(state), "replans": replans, "warnings": warnings}
 
     try:
         queries = plan_queries(state)

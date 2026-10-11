@@ -44,7 +44,7 @@ def on_location(
     saved = [s for s in store.load_saved(conn) if s["id"] not in recent]
 
     history = store.load_locations(conn)  # includes the update just stored
-    trigger = triggers.fired(point, previous, saved, history, nudges)
+    trigger = triggers.fired(point, previous, saved, history, nudges, trip)
     if trigger is None or throttled(nudges, now):
         return None
 

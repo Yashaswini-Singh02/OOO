@@ -1,0 +1,18 @@
+{
+  "_note": "Region -> crafts. gi_registered is from memory, not checked against the registry in this repo. Verify each entry at ipindia.gov.in before claiming GI status publicly. Entries with gi_registered false are traditional to the region but must not be called GI-tagged.",
+  "Goa": [
+    {"craft": "Cashew feni", "gi_registered": true},
+    {"craft": "Kunbi weave", "gi_registered": false},
+    {"craft": "Azulejo tiles", "gi_registered": false}
+  ],
+  "Kanchipuram": [{"craft": "Kanchipuram silk", "gi_registered": true}],
+  "Chennai": [{"craft": "Kanchipuram silk", "gi_registered": true}],
+  "Varanasi": [{"craft": "Banarasi silk", "gi_registered": true}],
+  "Lucknow": [{"craft": "Chikankari", "gi_registered": true}],
+  "Kutch": [
+    {"craft": "Kutch embroidery", "gi_registered": true},
+    {"craft": "Ajrakh", "gi_registered": true}
+  ],
+  "Mysore": [{"craft": "Mysore silk", "gi_registered": true}],
+  "Channapatna": [{"craft": "Channapatna toys", "gi_registered": true}]
+}

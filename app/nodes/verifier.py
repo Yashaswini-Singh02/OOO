@@ -1,5 +1,6 @@
 from neatlogs import span
 
+from app import gi
 from app.geo import distance_m
 from app.nodes.planner import day_conflict
 from app.state import RoveState
@@ -8,8 +9,13 @@ from app.state import RoveState
 MAX_REEL_MISMATCH_M = 50_000
 
 
-def refusal(c: dict) -> str | None:
+def refusal(c: dict, state: RoveState) -> str | None:
     """Why this candidate must not reach the feed, or None if it may."""
+    if c.get("kind") == "shop":
+        # layer one for shopping: the craft itself has to belong to this region
+        local = {e["craft"] for e in gi.crafts_for(state.get("district", ""), state.get("city", ""))}
+        if c.get("craft") not in local:
+            return "craft is not tied to this region"
     if not c.get("exists"):
         return "venue not found"
     if c.get("open_now") is False:  # None means hours unknown, which is not a refusal
@@ -27,7 +33,7 @@ def refusal(c: dict) -> str | None:
 def verifier(state: RoveState) -> dict:
     ok, bad = [], []
     for c in state.get("ranked", []):
-        reason = refusal(c)
+        reason = refusal(c, state)
         if reason:
             bad.append({**c, "reason": reason})
         else:
