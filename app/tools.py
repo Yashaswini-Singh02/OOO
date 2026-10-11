@@ -7,6 +7,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+import requests
 from neatlogs import span
 
 from app import providers
@@ -31,28 +32,40 @@ def place_search(
 ) -> list:
     if use_fixtures():
         return _fixture("places")
+    if os.getenv("GOOGLE_API_KEY"):
+        return providers.google_places(categories or [], lat, lng, radius_m)
     return providers.overpass_places(categories or [], lat, lng, radius_m, datetime.now().astimezone())
 
 
 @span(kind="TOOL", name="video_search")
-def video_search(place: str) -> list:
+def video_search(place: str, city: str = "") -> list:
+    """Links to videos about a place. Live mode costs one Tavily credit per new place."""
     if use_fixtures():
         return [v for v in _fixture("videos") if v["place"] == place]
-    return []  # no live reel provider yet; nothing is invented in its place
+    links = []
+    for source in (providers.youtube_videos, providers.reel_links):
+        try:
+            links += source(place, city)
+        except (RuntimeError, requests.RequestException):
+            continue  # one source being down must not cost the nudge its other links
+    return links
 
 
 @span(kind="TOOL", name="event_search")
-def event_search(district: str, from_date: str, to_date: str) -> list:
+def event_search(
+    district: str, from_date: str, to_date: str, lat: float = 0.0, lng: float = 0.0
+) -> list:
+    """Live mode costs one Tavily credit per district per day; results are cached."""
     if use_fixtures():
         return _fixture("events")
-    return []  # no live event provider yet; nothing is invented in its place
+    return providers.live_events(district, from_date, to_date, lat, lng)
 
 
 @span(kind="TOOL", name="shop_search")
-def shop_search(craft: str, district: str) -> list:
+def shop_search(craft: str, district: str, lat: float = 0.0, lng: float = 0.0) -> list:
     if use_fixtures():
         return [s for s in _fixture("shops") if s["craft"] == craft]
-    return []  # no live shop provider yet
+    return providers.google_find(f"{craft} shop in {district}", lat, lng, category="market", kind="shop")
 
 
 @span(kind="TOOL", name="weather")

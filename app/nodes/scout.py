@@ -90,8 +90,12 @@ def scout(state: RoveState) -> dict:
     places = tools.place_search(
         queries.place_query, state.get("lat", 0.0), state.get("lng", 0.0), radius, queries.categories
     )
-    places = [{**p, "videos": tools.video_search(p["name"])} for p in places]
-    events = tools.event_search(state.get("district", ""), *event_window(state))
+    if tools.use_fixtures():
+        # live video lookups cost credits, so feed does one for the venue it nudges
+        places = [{**p, "videos": tools.video_search(p["name"])} for p in places]
+    events = tools.event_search(
+        state.get("district", ""), *event_window(state), state.get("lat", 0.0), state.get("lng", 0.0)
+    )
     candidates = [localise(c, state) for c in places + events]
 
     # A replan must not hand the gate something it already refused, and a nudge must

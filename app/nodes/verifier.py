@@ -15,6 +15,8 @@ def refusal(c: dict) -> str | None:
     if c.get("open_now") is False:  # None means hours unknown, which is not a refusal
         return "closed right now"
     for video in c.get("videos", []):
+        if "claimed_lat" not in video:
+            continue  # a plain link claims no location, so there is nothing to compare
         off_by = distance_m(c["lat"], c["lng"], video["claimed_lat"], video["claimed_lng"])
         if off_by > MAX_REEL_MISMATCH_M:
             return "not where the reel claims"

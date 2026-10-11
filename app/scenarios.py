@@ -2,6 +2,8 @@
 and profile for one run, e.g. fixtures/goa_2day.json.
 """
 import json
+import os
+from datetime import datetime
 from pathlib import Path
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
@@ -20,5 +22,13 @@ DEFAULT = {
 def load(name: str | None = None) -> dict:
     if name is None:
         return dict(DEFAULT)
+    if name == "live":
+        # the real clock, and a position from OO_LAT / OO_LNG (default: Fontainhas, Panaji)
+        return {
+            **DEFAULT,
+            "lat": float(os.getenv("OO_LAT", DEFAULT["lat"])),
+            "lng": float(os.getenv("OO_LNG", DEFAULT["lng"])),
+            "now": datetime.now().astimezone().isoformat(timespec="seconds"),
+        }
     with open(FIXTURES / f"{name}.json") as f:
         return json.load(f)

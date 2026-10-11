@@ -37,6 +37,7 @@ def report(result: dict) -> None:
 if __name__ == "__main__":
     # python -m app.graph            -> the default Goa context
     # python -m app.graph goa_2day   -> fixtures/goa_2day.json
+    # OO_FIXTURES=0 python -m app.graph live   -> live providers, real clock
     report(run_once(scenarios.load(sys.argv[1] if len(sys.argv) > 1 else None)))
     neatlogs.flush()
     neatlogs.shutdown()
