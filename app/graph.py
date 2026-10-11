@@ -1,16 +1,10 @@
 import app.trace  # noqa: F401  MUST be the first import in every entry point
 
-from typing import TypedDict
-
 import neatlogs
 from langgraph.graph import END, START, StateGraph
 from neatlogs import span
 
-
-class RoveState(TypedDict, total=False):
-    city: str
-    candidates: list
-    replans: int
+from app.state import RoveState
 
 
 def trigger(state: RoveState) -> dict:

@@ -1,0 +1,23 @@
+[
+  {
+    "place": "Chapora Fort",
+    "title": "Sunset from the Chapora ramparts",
+    "url": "https://example.com/reel/chapora-sunset",
+    "claimed_lat": 15.606,
+    "claimed_lng": 73.7364
+  },
+  {
+    "place": "Dudhsagar Falls",
+    "title": "Jeep safari to the base of Dudhsagar",
+    "url": "https://example.com/reel/dudhsagar-jeep",
+    "claimed_lat": 15.3144,
+    "claimed_lng": 74.3143
+  },
+  {
+    "place": "Cabo de Rama Fort",
+    "title": "The quiet sunset fort in South Goa",
+    "url": "https://example.com/reel/cabo-de-rama",
+    "claimed_lat": 15.0886,
+    "claimed_lng": 73.9192
+  }
+]

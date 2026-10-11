@@ -1,0 +1,34 @@
+[
+  {
+    "id": "fixture-feni-store",
+    "name": "Fixture Feni Store",
+    "kind": "shop",
+    "craft": "Cashew feni",
+    "district": "North Goa",
+    "lat": 15.4989,
+    "lng": 73.8313,
+    "tags": ["shopping", "local", "feni"],
+    "activity": "shopping",
+    "cost_inr": 600,
+    "duration_h": 1,
+    "exists": true,
+    "open_now": true,
+    "distance_m": 900
+  },
+  {
+    "id": "fixture-azulejo-studio",
+    "name": "Fixture Azulejo Studio",
+    "kind": "shop",
+    "craft": "Azulejo tiles",
+    "district": "North Goa",
+    "lat": 15.4989,
+    "lng": 73.8313,
+    "tags": ["shopping", "craft", "tiles"],
+    "activity": "shopping",
+    "cost_inr": 1200,
+    "duration_h": 1,
+    "exists": true,
+    "open_now": true,
+    "distance_m": 600
+  }
+]
