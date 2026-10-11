@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4N1PH35HSXP114BQE4D1Y05",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "app/runtime.py",
+    "app/sim.py",
+    "app/store.py",
+    "app/triggers.py",
+    "fixtures/route_routine.json",
+    "tests/test_touch_grass.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 306,
+    "cache_creation_tokens": 505835,
+    "cache_read_tokens": 23000463,
+    "output_tokens": 146766,
+    "api_call_count": 114
+  }
+}
