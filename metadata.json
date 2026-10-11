@@ -1,0 +1,48 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4N0BC280V61FG25CKPQ10PD",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "app/hours.py",
+    "app/nodes/feed.py",
+    "app/nodes/scout.py",
+    "app/nodes/taste.py",
+    "app/nodes/verifier.py",
+    "app/providers.py",
+    "app/replay.py",
+    "app/runtime.py",
+    "app/sim.py",
+    "app/state.py",
+    "app/store.py",
+    "app/tools.py",
+    "app/triggers.py",
+    "fixtures/README.md",
+    "fixtures/events_goa.json",
+    "fixtures/places_goa.json",
+    "fixtures/route_goa.json",
+    "hackathon.md",
+    "tests/test_hours.py",
+    "tests/test_pipeline.py",
+    "tests/test_runtime.py",
+    "tests/test_scout.py",
+    "tests/test_triggers.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 258,
+    "cache_creation_tokens": 477084,
+    "cache_read_tokens": 17471519,
+    "output_tokens": 118910,
+    "api_call_count": 97
+  }
+}
