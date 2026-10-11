@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4N6R1SKP10BG9FJ5HKMPAXK",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 19,
+  "files_touched": [
+    ".env.example",
+    ".gitignore",
+    "app/assistant.py",
+    "app/budget_plan.py",
+    "app/messages.py",
+    "app/nodes/feed.py",
+    "app/nodes/taste.py",
+    "app/providers.py",
+    "app/store.py",
+    "app/telegram.py",
+    "app/whatsapp.py",
+    "requirements.txt",
+    "tests/test_assistant.py",
+    "tests/test_telegram.py",
+    "tests/test_whatsapp_payload.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 462,
+    "cache_creation_tokens": 607929,
+    "cache_read_tokens": 44495422,
+    "output_tokens": 226655,
+    "api_call_count": 168
+  }
+}
