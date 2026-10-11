@@ -7,10 +7,11 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+import openai
 import requests
 from neatlogs import span
 
-from app import providers
+from app import providers, quota
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 
@@ -66,6 +67,30 @@ def shop_search(craft: str, district: str, lat: float = 0.0, lng: float = 0.0) -
     if use_fixtures():
         return [s for s in _fixture("shops") if s["craft"] == craft]
     return providers.google_find(f"{craft} shop in {district}", lat, lng, category="market", kind="shop")
+
+
+@span(kind="TOOL", name="place_about")
+def place_about(place: dict) -> dict:
+    """What one place is: {"about": two sentences, "photo": image address, "photo_by": credit}.
+    Live mode: two Google calls and one small model call per new place, then cached.
+    """
+    plain = {"about": place.get("summary") or "", "photo": None, "photo_by": None}
+    if use_fixtures() or not place.get("google_id"):
+        return plain
+    key = f"place:{place['google_id']}"
+    hit = quota.cached(key)
+    if hit is None:
+        try:
+            details = providers.google_about(place["google_id"])
+            hit = {
+                "about": providers.describe(place["name"], place.get("what"), details) or plain["about"],
+                "photo": providers.google_photo(details["photo_name"]) if details.get("photo_name") else None,
+                "photo_by": details.get("photo_by"),
+            }
+        except (RuntimeError, requests.RequestException, openai.OpenAIError):
+            return plain  # not cached, so it is tried again next time
+        quota.remember(key, hit)
+    return hit
 
 
 @span(kind="TOOL", name="weather")

@@ -1,5 +1,3 @@
-from collections import Counter
-
 from app import tools
 from app.state import RoveState
 
@@ -28,19 +26,16 @@ def reasons(top: dict, state: RoveState) -> list:
         why.append(f"it matches your taste for {' and '.join(matches)}")
 
     verified = state.get("verified", [])
-    if top.get("rating") and top["rating"] >= 4:
-        why.append(f"people rate it {top['rating']} out of 5")
+    rated = [c["rating"] for c in verified if c.get("rating")]
+    if top.get("rating") and len(rated) > 1 and top["rating"] == max(rated):
+        why.append("it is the best-rated place near you that passed my checks")
+    elif top.get("rating") and top["rating"] >= 4:
+        why.append("visitors rate it highly")
     if len(verified) > 1 and top.get("distance_m") == min(c.get("distance_m", 0) for c in verified):
         why.append("it is the closest option that passed my checks")
     if not why:
         why.append("it is the best match I could verify near you")
     return why
-
-
-def ruled_out(state: RoveState) -> str:
-    """One line on what the gate refused this run, e.g. '2 closed right now, 1 venue not found'."""
-    counts = Counter(r["reason"] for r in state.get("rejected", []))
-    return ", ".join(f"{n} {reason}" for reason, n in counts.most_common())
 
 
 def feed(state: RoveState) -> dict:
@@ -56,7 +51,9 @@ def feed(state: RoveState) -> dict:
     top = state["verified"][0]
     videos = top.get("videos")
     if videos is None:  # live mode: scout skipped the lookup, do it for this one venue
-        videos = tools.video_search(top["name"], state.get("city", ""))
+        # search with the venue's own town, not the trip's, so the links are about this place
+        videos = tools.video_search(top["name"], top.get("city") or state.get("city", ""))
+    about = tools.place_about(top)
     return {
         "nudge": {
             "id": top["id"],
@@ -64,11 +61,14 @@ def feed(state: RoveState) -> dict:
             "kind": top["kind"],
             "what": top.get("what"),
             "address": top.get("address"),
-            "summary": top.get("summary"),
+            "about": about["about"],
+            "photo": about["photo"],
+            "photo_by": about["photo_by"],
+            "city": top.get("city"),
+            "district": top.get("district"),
             "rating": top.get("rating"),
             "rating_count": top.get("rating_count"),
             "why": reasons(top, state),
-            "ruled_out": ruled_out(state),
             "outfit": top.get("outfit"),
             "cost_inr": top.get("cost_inr", 0),
             "distance_m": top.get("distance_m"),

@@ -41,6 +41,8 @@ def plan_queries(state: RoveState) -> ScoutQueries:
         f"Weather: {state.get('weather', 'unknown')}\n"
         f"Days left on the trip: {state.get('days_left', 'unknown')}\n"
         f"Tags the traveller likes most: {', '.join(liked) or 'none recorded'}\n"
+        f"Kinds of place the traveller does not want (never choose these): "
+        f"{', '.join(state.get('dislikes', [])) or 'none'}\n"
         f"Venues already rejected this run: "
         f"{', '.join(r['name'] for r in state.get('rejected', [])) or 'none'}"
     )
@@ -92,6 +94,17 @@ def scout_shops(state: RoveState) -> list:
     return [c for c in shops if c.get("distance_m", 0) <= radius]
 
 
+def unwanted(c: dict, dislikes: list) -> bool:
+    """True when the candidate is a kind of place the traveller said they do not want.
+    Checked against our tags, the provider's own types and its type label.
+    """
+    if not dislikes:
+        return False
+    kinds = {t.lower() for t in c.get("tags", [])} | {t.lower() for t in c.get("types", [])}
+    kinds |= set((c.get("what") or "").lower().replace("_", " ").split())
+    return any(d.lower() in kinds for d in dislikes)
+
+
 def scout(state: RoveState) -> dict:
     warnings = list(state.get("warnings", []))
     # Loop guard: scout already ran if candidates exist, so this entry is a replan.
@@ -106,6 +119,10 @@ def scout(state: RoveState) -> dict:
         warnings.append(f"scout used the default query: {type(e).__name__}: {e}")
         queries = ScoutQueries(place_query=DEFAULT_QUERY, radius_m=DEFAULT_RADIUS_M)
 
+    dislikes = state.get("dislikes", [])
+    queries.categories = [c for c in queries.categories if c not in dislikes] or [
+        c for c in DEFAULT_CATEGORIES if c not in dislikes
+    ]
     radius = min(queries.radius_m, state.get("max_radius_m", queries.radius_m))
     places = tools.place_search(
         queries.place_query, state.get("lat", 0.0), state.get("lng", 0.0), radius, queries.categories
@@ -125,4 +142,6 @@ def scout(state: RoveState) -> dict:
     if not state.get("wants"):
         # things the traveller asked for by name are worth a long trip; the rest must be near
         candidates = [c for c in candidates if c.get("distance_m", 0) <= radius]
+        saved = set(state.get("saved", []))
+        candidates = [c for c in candidates if c["id"] in saved or not unwanted(c, dislikes)]
     return {"candidates": candidates, "replans": replans, "warnings": warnings}

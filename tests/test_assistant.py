@@ -32,7 +32,7 @@ class AssistantTest(unittest.TestCase):
     def say(self, text: str = "", intent: Intent | None = None, **extra) -> str:
         return assistant.handle(
             self.conn, {"text": text, "lat": None, "lng": None, "now": NOW, **extra},
-            self.graph.invoke, understand=lambda _: intent or Intent(intent="help"),
+            self.graph.invoke, understand=lambda *_: intent or Intent(intent="help"),
         )
 
     def test_shared_location_gets_one_verified_nudge_and_is_not_repeated(self):
@@ -80,7 +80,7 @@ class AssistantTest(unittest.TestCase):
         sent = []
         ask = lambda intent=None, **extra: assistant.handle(
             self.conn, {"text": "", "lat": None, "lng": None, "now": NOW, **extra},
-            self.graph.invoke, understand=lambda _: intent or Intent(intent="help"), notify=sent.append,
+            self.graph.invoke, understand=lambda *_: intent or Intent(intent="help"), notify=sent.append,
         )
         ask(**FONTAINHAS)
         self.assertEqual(sent, ["On it. Checking what's open near you..."])
@@ -89,6 +89,45 @@ class AssistantTest(unittest.TestCase):
         ask(Intent(intent="budget_status"))
         ask(Intent(intent="spend", amount=100, category="food"))
         self.assertEqual(len(sent), 2)  # instant answers need no "on it"
+
+    def test_suggest_another_gives_a_different_place_each_time(self):
+        self.assertIn("Share your location first", self.say(intent=Intent(intent="more")))
+        first = self.say(**FONTAINHAS)
+        second = self.say(intent=Intent(intent="more"))
+        third = self.say(intent=Intent(intent="more"))
+        titles = [r.title for r in (first, second, third)]
+        self.assertEqual(len(set(titles)), 3, titles)
+
+    def test_a_stated_dislike_is_remembered_and_applied_at_once(self):
+        first = self.say(**FONTAINHAS)
+        self.assertEqual(first.title, "Fontainhas Latin Quarter")
+        sent = []
+        reply = assistant.handle(
+            self.conn, {"text": "i dont like museums", "lat": None, "lng": None, "now": NOW},
+            self.graph.invoke, understand=lambda *_: Intent(intent="preference", dislikes=["museum"]),
+            notify=sent.append,
+        )
+        self.assertEqual(sent, ["Got it: no more museum suggestions. I'll remember that. Finding you something else..."])
+        self.assertNotIn("Museum", reply.title)
+        self.assertEqual(store.get_kv(self.conn, "dislikes"), ["museum"])
+        self.assertEqual(store.load_taste(self.conn)["tags"]["museum"], -1.0)
+        # it stays excluded on later requests too
+        titles = [self.say(intent=Intent(intent="more")).title for _ in range(3)]
+        self.assertFalse(any("Museum" in t for t in titles), titles)
+
+    def test_likes_are_learned_and_unknown_words_are_ignored(self):
+        reply = self.say(intent=Intent(intent="preference", likes=["sunset", "discos"]))
+        self.assertEqual(reply, "Got it: more sunset. I'll remember that.")
+        self.assertEqual(store.load_taste(self.conn)["tags"], {"sunset": 0.8})
+
+    def test_the_model_is_told_about_the_last_suggestion(self):
+        self.say(**FONTAINHAS)
+        seen = []
+        assistant.handle(
+            self.conn, {"text": "not this kind of place", "lat": None, "lng": None, "now": NOW},
+            self.graph.invoke, understand=lambda text, context: seen.append(context) or Intent(intent="help"),
+        )
+        self.assertIn("Last suggestion: Fontainhas Latin Quarter (kind: heritage, walk, photography, cafe)", seen[0])
 
     def test_anything_else_gets_help(self):
         self.assertIn("I'm Outofoffice", self.say("hello"))

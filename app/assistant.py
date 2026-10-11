@@ -15,13 +15,17 @@ import openai
 from pydantic import BaseModel
 
 from app import budget_plan, messages, runtime, store, tools
+from app.providers import CATEGORIES
 
 USERS_DIR = Path(__file__).resolve().parent.parent / "data" / "users"
 OPENROUTER_URL = "https://openrouter.ai/api/v1"
-DEFAULT_TRIP = {"city": "Goa", "district": "North Goa", "days_left": 2}
+DEFAULT_TRIP = {"city": "", "district": "", "days_left": 2}
 ASKED_RADIUS_M = 5000
 ACTIVITIES = ["trek", "sunset", "beach", "walk", "market", "indoor", "cafe"]
 NO_REPEAT = timedelta(hours=24)
+# the words a like or dislike can be mapped onto: place kinds and the tags they carry
+KINDS = sorted(set(CATEGORIES) | {t for _, tags, _, _ in CATEGORIES.values() for t in tags} | set(ACTIVITIES))
+LIKE_WEIGHT, DISLIKE_WEIGHT = 0.8, -1.0
 
 HELP = messages.WELCOME
 GREETINGS = {"/start", "/help", "hi", "hello", "hey", "help", "start"}
@@ -29,7 +33,7 @@ GREETINGS = {"/start", "/help", "hi", "hello", "hey", "help", "start"}
 
 class Intent(BaseModel):
     intent: Literal[
-        "set_trip", "set_budget", "spend", "budget_status", "plan", "shop", "rate", "save", "help"
+        "set_trip", "set_budget", "spend", "budget_status", "plan", "shop", "rate", "save", "more", "preference", "help"
     ]
     activities: list[str] = []  # for plan: chosen from ACTIVITIES
     amount: float | None = None  # for set_budget and spend, in rupees
@@ -39,10 +43,15 @@ class Intent(BaseModel):
     city: str | None = None  # for set_trip
     district: str | None = None  # for set_trip
     days_left: int | None = None  # for set_trip and plan
+    likes: list[str] = []  # for preference: chosen from KINDS
+    dislikes: list[str] = []  # for preference: chosen from KINDS
 
 
-def understand(text: str) -> Intent:
-    """One model call that classifies the message and pulls out its numbers."""
+def understand(text: str, context: str = "") -> Intent:
+    """One model call that classifies the message and pulls out its fields. `context`
+    describes the last suggestion and what is already known, so "not this kind of place"
+    or "something like that again" can be resolved.
+    """
     client = openai.OpenAI(base_url=OPENROUTER_URL, api_key=os.getenv("OPENROUTER_API_KEY"))
     completion = client.chat.completions.parse(
         model=os.getenv("OO_MODEL", "anthropic/claude-haiku-5.5"),
@@ -56,13 +65,19 @@ def understand(text: str) -> Intent:
                     "budget_status (asking what is left), plan (they name things they want to do), "
                     "shop (asking what to buy locally), rate (feedback on the last suggestion, "
                     "as a rating from 1 to 5), save (they want to keep the last suggested "
-                    "place for later), help (anything else). "
+                    "place for later), more (they want another suggestion, a different one), "
+                    "preference (they say what kinds of place they like or dislike, including "
+                    "reactions to the last suggestion such as 'not this kind of thing'), "
+                    "help (anything else). "
+                    f"For preference, fill likes and dislikes using only words from: {', '.join(KINDS)}. "
+                    "When they refer to the last suggestion without naming a kind, use its kind "
+                    "from the context. "
                     f"For plan, map what they want onto activities from: {', '.join(ACTIVITIES)}. "
                     f"For spend, choose category from: {', '.join(budget_plan.CATEGORIES)}. "
                     "Amounts are in rupees. Leave a field empty when the message does not state it."
                 ),
             },
-            {"role": "user", "content": text},
+            {"role": "user", "content": f"Context:\n{context or 'none'}\n\nMessage: {text}"},
         ],
         response_format=Intent,
     )
@@ -90,7 +105,40 @@ def _context(conn: sqlite3.Connection, now: str) -> dict:
         "now": now,
         "recent": recent,
         "saved": [s["id"] for s in store.load_saved(conn)],
+        "dislikes": store.get_kv(conn, "dislikes", []),
     }
+
+
+def _hint(conn: sqlite3.Connection) -> str:
+    """What the model needs to resolve references to earlier messages."""
+    last = store.get_kv(conn, "last_nudge")
+    liked = [t for t, w in store.load_taste(conn)["tags"].items() if w > 0]
+    lines = []
+    if last:
+        lines.append(f"Last suggestion: {last['name']} (kind: {', '.join(last.get('tags') or []) or 'unknown'})")
+    lines.append(f"Already likes: {', '.join(liked) or 'nothing recorded'}")
+    lines.append(f"Already dislikes: {', '.join(store.get_kv(conn, 'dislikes', [])) or 'nothing recorded'}")
+    return "\n".join(lines)
+
+
+def _learn(conn: sqlite3.Connection, likes: list, dislikes: list) -> str:
+    """Record stated likes and dislikes for good; returns a short confirmation."""
+    likes = [k for k in likes if k in KINDS]
+    dislikes = [k for k in dislikes if k in KINDS and k not in likes]
+    taste = store.load_taste(conn)
+    for k in likes:
+        taste["tags"][k] = LIKE_WEIGHT
+    for k in dislikes:
+        taste["tags"][k] = DISLIKE_WEIGHT
+    store.save_taste(conn, taste)
+    known = [d for d in store.get_kv(conn, "dislikes", []) if d not in likes]
+    store.set_kv(conn, "dislikes", sorted(set(known) | set(dislikes)))
+    parts = []
+    if dislikes:
+        parts.append(f"no more {' or '.join(dislikes)} suggestions")
+    if likes:
+        parts.append(f"more {' and '.join(likes)}")
+    return "Got it: " + ", ".join(parts) + ". I'll remember that." if parts else ""
 
 
 def _run_and_reply(conn: sqlite3.Connection, context: dict, run: Callable[[dict], dict]) -> str:
@@ -103,6 +151,11 @@ def _run_and_reply(conn: sqlite3.Connection, context: dict, run: Callable[[dict]
     if nudge.get("kind") != "plan":
         store.add_nudge(conn, nudge["id"], context["now"], context.get("trigger"))
         _remember(conn, nudge)
+        if nudge.get("city"):
+            # where the traveller actually is beats whatever the trip said before
+            trip = store.get_kv(conn, "trip", DEFAULT_TRIP)
+            store.set_kv(conn, "trip", {**trip, "city": nudge["city"],
+                                        "district": nudge.get("district") or nudge["city"]})
     return messages.nudge_text(nudge)
 
 
@@ -153,7 +206,7 @@ def handle(
     text = message.get("text", "")
     if text.strip().lower() in GREETINGS:
         return HELP  # no need to spend a model call on "hi"
-    intent = message.get("intent") or understand(text)
+    intent = message.get("intent") or understand(text, _hint(conn))
     trip = store.get_kv(conn, "trip", DEFAULT_TRIP)
     period = store.get_kv(conn, "budget_period", "trip")
 
@@ -184,11 +237,31 @@ def handle(
     if intent.intent == "budget_status":
         return budget_plan.status(store.load_budget(conn), period, trip["days_left"], then)
 
-    if intent.intent in ("plan", "shop"):
+    if intent.intent == "preference":
+        learned = _learn(conn, intent.likes, intent.dislikes)
+        if not learned:
+            return "Tell me what you do or don't enjoy, e.g. \"I don't like parks\" or \"I love museums\"."
+        here = store.last_location(conn)
+        if here is None:
+            return learned
+        # they were reacting to a suggestion, so follow up with one that fits better
+        notify(learned + " Finding you something else...")
+        return _run_and_reply(
+            conn,
+            {**_context(conn, now), "lat": here["lat"], "lng": here["lng"], "weather": here["weather"],
+             "trigger": "asked", "max_radius_m": ASKED_RADIUS_M},
+            run,
+        )
+
+    if intent.intent in ("plan", "shop", "more"):
         here = store.last_location(conn)
         if here is None:
             return "Share your location first, so I know where you're starting from."
         context = {**_context(conn, now), "lat": here["lat"], "lng": here["lng"], "weather": here["weather"]}
+        if intent.intent == "more":
+            # everything suggested in the last day is already excluded, so this is a new one
+            notify("On it. Finding you another one...")
+            return _run_and_reply(conn, {**context, "trigger": "asked", "max_radius_m": ASKED_RADIUS_M}, run)
         if intent.intent == "shop":
             notify("On it. Looking for what this place is known for...")
             return _run_and_reply(conn, {**context, "trigger": "speciality", "max_radius_m": ASKED_RADIUS_M}, run)

@@ -56,22 +56,56 @@ class TelegramUpdateTest(unittest.TestCase):
         card = messages.nudge_text({
             "name": "Fort <Aguada>", "kind": "place", "what": "Historical landmark", "address": "Candolim",
             "distance_m": 6211, "hours_verified": True, "rating": 4.4, "rating_count": 51234,
-            "why": ["people rate it 4.4 out of 5"], "ruled_out": "2 closed right now",
+            "why": ["people rate it 4.4 out of 5"], "about": "A 17th-century fort on the coast.",
             "source": "https://maps.google.com/?cid=1",
             "videos": [{"url": "https://youtu.be/a", "source": "youtube"},
                        {"url": "https://youtu.be/b", "source": "youtube"},
                        {"url": "https://instagram.com/reel/c", "source": "instagram"}],
         })
         out = self.tg.render(card)
-        self.assertTrue(out["text"].startswith("<b>Fort &lt;Aguada&gt;</b>\n"))  # escaped, bold title
-        self.assertIn("Historical landmark · Candolim", out["text"])
-        self.assertIn("6.2 km away · open now · rated 4.4 (51,234 reviews)", out["text"])
-        self.assertIn("Why this: people rate it 4.4 out of 5.", out["text"])
-        self.assertIn("Ruled out on the way: 2 closed right now.", out["text"])
+        self.assertTrue(out["text"].startswith("<b>Fort &lt;Aguada&gt;</b>\n<i>Historical landmark</i>\n"))
+        self.assertIn("A 17th-century fort on the coast.", out["text"])
+        self.assertIn("📍 6.2 km away  ·  🟢 Open now  ·  ⭐ 4.4 (51,234)", out["text"])
+        self.assertIn("💡 <b>Why this:</b> people rate it 4.4 out of 5.", out["text"])
+        self.assertNotIn("Candolim", out["text"])  # no address: the Maps button covers it
+        self.assertNotIn("Ruled out", out["text"])
         self.assertNotIn("http", out["text"])  # links are buttons, not raw URLs
-        links, actions = out["reply_markup"]["inline_keyboard"]
-        self.assertEqual([b["text"] for b in links], ["Open in Maps", "Watch video", "See reel"])
-        self.assertEqual([b["text"] for b in actions], ["Loved it", "Not for me", "Save for later"])
+        links, feedback, more = out["reply_markup"]["inline_keyboard"]
+        self.assertEqual([b["text"] for b in links], ["🗺 Open in Maps", "▶️ Watch video", "🎬 See reel"])
+        self.assertEqual([b["text"] for b in feedback], ["❤️ Loved it", "👎 Not for me"])
+        self.assertEqual([b["text"] for b in more], ["🔖 Save for later", "🔄 Suggest another"])
+        # the plain-text form, for channels without formatting, carries the same facts
+        self.assertIn("6.2 km away · open now · rated 4.4 (51,234 reviews)", str(card))
+
+    def test_a_picture_goes_out_with_the_card_and_never_blocks_it(self):
+        from app import messages
+        nudge = {"name": "Fort Aguada", "kind": "place", "hours_verified": True, "why": [],
+                 "photo": "https://lh3.googleusercontent.com/x", "photo_by": "A. Visitor", "videos": []}
+        card = messages.nudge_text(nudge)
+        self.assertIn("📷 A. Visitor · Google", card.html)
+
+        sent = []
+        with patch.object(self.tg, "call", side_effect=lambda method, **kw: sent.append((method, kw))):
+            self.tg.deliver(42, card)
+        self.assertEqual([m for m, _ in sent], ["sendPhoto"])  # one message: photo with caption and buttons
+        self.assertEqual(sent[0][1]["photo"], "https://lh3.googleusercontent.com/x")
+        self.assertIn("<b>Fort Aguada</b>", sent[0][1]["caption"])
+        self.assertIn("inline_keyboard", sent[0][1]["reply_markup"])
+
+        long_card = messages.nudge_text({**nudge, "about": "x" * 1100})
+        sent.clear()
+        with patch.object(self.tg, "call", side_effect=lambda method, **kw: sent.append((method, kw))):
+            self.tg.deliver(42, long_card)
+        self.assertEqual([m for m, _ in sent], ["sendPhoto", "sendMessage"])  # too long for a caption
+
+        def failing(method, **kw):
+            sent.append((method, kw))
+            if method == "sendPhoto":
+                raise RuntimeError("telegram sendPhoto failed: wrong file")
+        sent.clear()
+        with patch.object(self.tg, "call", side_effect=failing):
+            self.tg.deliver(42, card)
+        self.assertEqual([m for m, _ in sent], ["sendPhoto", "sendMessage"])  # the text still arrives
 
     def test_welcome_offers_a_share_location_button(self):
         from app import messages
@@ -99,7 +133,7 @@ class LiveLocationTest(unittest.TestCase):
             conn = store.connect(os.path.join(tmp, "user.db"))
             run = build().invoke
             say = lambda intent, now: assistant.handle(
-                conn, {"text": "", "lat": None, "lng": None, "now": now}, run, understand=lambda _: intent)
+                conn, {"text": "", "lat": None, "lng": None, "now": now}, run, understand=lambda *_: intent)
 
             # Friday: a pin near Fontainhas, then "save that place"
             pin = assistant.handle(conn, {"text": "", "lat": 15.4989, "lng": 73.8313,

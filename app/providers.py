@@ -7,6 +7,7 @@ Weather: Open-Meteo, no key.
 Paid calls go through app.quota so a daily cap can never be exceeded.
 """
 import os
+import re
 from datetime import datetime
 
 import openai
@@ -26,9 +27,10 @@ GOOGLE_FIELDS = ",".join(
     for f in (
         "id", "displayName", "location", "primaryType", "types", "businessStatus",
         "currentOpeningHours.openNow", "googleMapsUri", "rating", "userRatingCount",
-        "primaryTypeDisplayName", "shortFormattedAddress", "editorialSummary",
+        "primaryTypeDisplayName", "shortFormattedAddress", "editorialSummary", "addressComponents",
     )
 )
+GOOGLE_DETAILS_URL = "https://places.googleapis.com/v1/places/{id}"
 GOOGLE_MAX_RADIUS_M = 50_000
 MAX_EVENTS = 3
 
@@ -161,11 +163,24 @@ def _google_post(url: str, body: dict) -> list:
     return r.json().get("places", [])
 
 
+def _component(p: dict, *kinds: str) -> str | None:
+    for kind in kinds:
+        for part in p.get("addressComponents", []):
+            if kind in part.get("types", []):
+                return part.get("longText")
+    return None
+
+
 def _from_google(p: dict, category: str, kind: str = "place") -> dict:
     _, tags, activity, indoor = CATEGORIES[category]
     status = p.get("businessStatus", "OPERATIONAL")
     return {
         "id": f"g-{p['id']}",
+        "google_id": p["id"],
+        "types": p.get("types", []),
+        "city": _component(p, "locality", "postal_town"),
+        "district": _component(p, "administrative_area_level_3", "administrative_area_level_2"),
+        "region": _component(p, "administrative_area_level_1"),
         "name": p["displayName"]["text"],
         "kind": kind,
         "lat": p["location"]["latitude"],
@@ -228,12 +243,35 @@ def google_find(text: str, lat: float, lng: float, category: str = "attraction",
 
 # ---------- videos: YouTube + Instagram reel links ----------
 
+GENERIC_WORDS = {
+    "the", "and", "of", "at", "in", "cafe", "restaurant", "hotel", "park", "temple", "church",
+    "beach", "fort", "museum", "market", "room", "rooms", "centre", "center", "point", "view",
+}
+
+
+def core_name(place: str) -> str:
+    """The venue's own name, without a trailing branch or area: 'X – HSR Layout' -> 'X'."""
+    return re.split(r"\s+[–—|-]\s+|,|\(", place)[0].strip()
+
+
+def is_about(place: str, text: str) -> bool:
+    """True when the text clearly names the venue. A link that merely shares a city or a
+    generic word with it is not about it, and is better left out than shown.
+    """
+    words = [w for w in re.findall(r"[a-z0-9]+", core_name(place).lower()) if len(w) > 2]
+    distinctive = [w for w in words if w not in GENERIC_WORDS] or words
+    haystack = re.sub(r"[^a-z0-9]+", " ", text.lower())
+    squashed = haystack.replace(" ", "")
+    return bool(distinctive) and all(w in haystack or w in squashed for w in distinctive)
+
+
 def youtube_videos(place: str, city: str) -> list:
     if not quota.allow("youtube"):
         return []
     r = requests.get(
         YOUTUBE_URL,
-        params={"part": "snippet", "type": "video", "maxResults": 2, "q": f"{place} {city}", "key": _google_key()},
+        params={"part": "snippet", "type": "video", "maxResults": 5,
+                "q": f'"{core_name(place)}" {city}'.strip(), "key": _google_key()},
         timeout=TIMEOUT_S,
     )
     if not r.ok:
@@ -246,6 +284,7 @@ def youtube_videos(place: str, city: str) -> list:
             "source": "youtube",
         }
         for item in r.json().get("items", [])
+        if is_about(place, item["snippet"]["title"] + " " + item["snippet"].get("description", ""))
     ]
 
 
@@ -270,11 +309,15 @@ def reel_links(place: str, city: str) -> list:
     key = f"reels:{place}:{city}"
     hit = quota.cached(key)
     if hit is None:
-        results = tavily(f"{place} {city} reel", max_results=3, include_domains=["instagram.com"])
+        results = tavily(
+            f'"{core_name(place)}" {city}'.strip(), max_results=5, include_domains=["instagram.com"]
+        )
         hit = [
             {"place": place, "title": r.get("title", ""), "url": r["url"], "source": "instagram"}
             for r in results
+            if is_about(place, f"{r.get('title', '')} {r.get('content', '')}")
         ]
+        hit.sort(key=lambda v: "/reel/" not in v["url"])  # actual reels before profile pages
         quota.remember(key, hit)
     return hit
 
@@ -344,3 +387,74 @@ def live_events(district: str, from_date: str, to_date: str, lat: float, lng: fl
         )
     quota.remember(key, events)
     return events
+
+
+# ---------- what a place is ----------
+
+def google_about(google_id: str) -> dict:
+    """Google's own description of one place, plus a few visitor reviews to describe it from."""
+    if not quota.allow("google"):
+        return {}
+    r = requests.get(
+        GOOGLE_DETAILS_URL.format(id=google_id),
+        headers={"X-Goog-Api-Key": _google_key(),
+                 "X-Goog-FieldMask": "editorialSummary,generativeSummary,reviews,photos"},
+        timeout=TIMEOUT_S,
+    )
+    if not r.ok:
+        raise RuntimeError(f"Google Places {r.status_code}: {r.text[:300]}")
+    body = r.json()
+    summary = body.get("editorialSummary", {}).get("text") or (
+        body.get("generativeSummary", {}).get("overview", {}).get("text")
+    )
+    reviews = [x.get("text", {}).get("text", "") for x in body.get("reviews", [])]
+    photos = body.get("photos", [])
+    return {
+        "summary": summary,
+        "reviews": [x[:500] for x in reviews if x][:4],
+        "photo_name": photos[0]["name"] if photos else None,
+        "photo_by": (photos[0].get("authorAttributions") or [{}])[0].get("displayName") if photos else None,
+    }
+
+
+def google_photo(photo_name: str, width: int = 1000) -> str | None:
+    """A direct image address for one place photo. The address Google returns carries no
+    API key, so it is safe to hand to a chat service.
+    """
+    if not quota.allow("google"):
+        return None
+    r = requests.get(
+        f"https://places.googleapis.com/v1/{photo_name}/media",
+        params={"maxWidthPx": width, "skipHttpRedirect": "true"},
+        headers={"X-Goog-Api-Key": _google_key()},
+        timeout=TIMEOUT_S,
+    )
+    if not r.ok:
+        raise RuntimeError(f"Google Places photo {r.status_code}: {r.text[:300]}")
+    return r.json().get("photoUri")
+
+
+def describe(name: str, what: str | None, details: dict) -> str:
+    """Two sentences on what a place is, written only from Google's description and reviews."""
+    if not details.get("summary") and not details.get("reviews"):
+        return ""
+    facts = f"Name: {name}\nType: {what or 'unknown'}\nDescription: {details.get('summary') or 'none'}\n"
+    facts += "Visitor reviews:\n" + "\n".join(f"- {x}" for x in details.get("reviews", []))
+    client = openai.OpenAI(base_url=OPENROUTER_URL, api_key=os.getenv("OPENROUTER_API_KEY"))
+    completion = client.chat.completions.create(
+        model=os.getenv("OO_MODEL", "anthropic/claude-haiku-5.5"),
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "In at most two short sentences, tell a traveller what this place is and what "
+                    "people do there. Use only the details given: do not add facts, prices, hours "
+                    "or history that are not in them. Plain text, no quotes, no superlatives. If "
+                    "the details are too thin to say anything useful, reply with exactly: NONE"
+                ),
+            },
+            {"role": "user", "content": facts},
+        ],
+    )
+    text = (completion.choices[0].message.content or "").strip()
+    return "" if text.upper().startswith("NONE") else text

@@ -15,6 +15,7 @@ class RoveState(TypedDict, total=False):
     max_radius_m: int  # how far the trigger lets scout look
     saved: list  # ids of spots the traveller saved
     recent: list  # ids nudged in the last 24 h, never repeated
+    dislikes: list  # kinds of place the traveller said they do not want, e.g. ["park"]
 
     # --- profile, loaded from sqlite ---
     taste: dict  # {tags: {...}, ratings: [...]}

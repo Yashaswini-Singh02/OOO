@@ -33,6 +33,7 @@ SESSION = requests.Session()
 API = "https://api.telegram.org/bot{token}/{method}"
 POLL_S = 30
 MAX_BODY = 4000  # Telegram caps a message at 4096 characters
+MAX_CAPTION = 1024  # and a photo caption at 1024
 
 
 def call(method: str, **params) -> dict:
@@ -50,9 +51,10 @@ def call(method: str, **params) -> dict:
 
 # What each button under a suggestion means. Buttons skip the model: the intent is known.
 BUTTONS = {
-    "rate:5": ("Loved it", Intent(intent="rate", rating=5)),
-    "rate:2": ("Not for me", Intent(intent="rate", rating=2)),
-    "save": ("Save for later", Intent(intent="save")),
+    "rate:5": ("❤️ Loved it", Intent(intent="rate", rating=5)),
+    "rate:2": ("👎 Not for me", Intent(intent="rate", rating=2)),
+    "save": ("🔖 Save for later", Intent(intent="save")),
+    "more": ("🔄 Suggest another", Intent(intent="more")),
 }
 
 
@@ -97,22 +99,41 @@ def incoming(update: dict) -> dict | None:
 
 def render(reply: str) -> dict:
     """Telegram send parameters for a reply: bold title, link buttons, quick actions."""
-    title, body = getattr(reply, "title", ""), getattr(reply, "body", str(reply))
-    text = (f"<b>{html.escape(title)}</b>\n" if title else "") + html.escape(body)
+    text = getattr(reply, "html", "") or html.escape(str(reply))
     params = {"text": text[:MAX_BODY], "parse_mode": "HTML", "disable_web_page_preview": True}
     rows = []
     if getattr(reply, "links", None):
         rows.append([{"text": label, "url": url} for label, url in reply.links])
     if getattr(reply, "actions", False):
-        rows.append([{"text": label, "callback_data": data} for data, (label, _) in BUTTONS.items()])
+        actions = [{"text": label, "callback_data": data} for data, (label, _) in BUTTONS.items()]
+        rows += [actions[:2], actions[2:]]
     if rows:
         params["reply_markup"] = {"inline_keyboard": rows}
     elif getattr(reply, "ask_location", False):
         params["reply_markup"] = {
-            "keyboard": [[{"text": "Share my location", "request_location": True}]],
+            "keyboard": [[{"text": "📍 Share my location", "request_location": True}]],
             "resize_keyboard": True,
         }
     return params
+
+
+def deliver(chat: int, reply: str) -> None:
+    """Send a reply, with its picture when it has one. The text and buttons ride as the
+    photo's caption when they fit; otherwise the photo goes first and the text follows.
+    A picture that fails to send never costs the traveller the suggestion itself.
+    """
+    params = render(reply)
+    photo = getattr(reply, "photo", None)
+    if photo:
+        try:
+            if len(params["text"]) <= MAX_CAPTION:
+                call("sendPhoto", chat_id=chat, photo=photo, caption=params["text"], parse_mode="HTML",
+                     **({"reply_markup": params["reply_markup"]} if "reply_markup" in params else {}))
+                return
+            call("sendPhoto", chat_id=chat, photo=photo)
+        except RuntimeError as e:
+            print(f"photo not sent: {e}")
+    call("sendMessage", chat_id=chat, **params)
 
 
 def allowed(chat: int) -> bool:
@@ -152,7 +173,7 @@ def process(message: dict) -> None:
         print(f"error handling update: {type(e).__name__}: {e}")
         reply = "Something went wrong on my side. Try again in a moment."
     if reply:
-        call("sendMessage", chat_id=message["chat"], **render(reply))
+        deliver(message["chat"], reply)
     print(f"{message['now'][11:19]}  {message['kind']:<5} -> {'replied' if reply else 'stayed quiet'}")
 
 
