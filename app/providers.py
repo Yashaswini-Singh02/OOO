@@ -46,7 +46,7 @@ USER_AGENT = "outofoffice-hackathon/0.1"
 
 # category -> (OSM filters, our tags, activity, indoor)
 CATEGORIES = {
-    "viewpoint": (["tourism=viewpoint"], ["viewpoint", "sunset", "photography"], "sunset", False),
+    "viewpoint": (["tourism=viewpoint"], ["viewpoint", "sunset", "sunrise", "photography"], "sunset", False),
     "beach": (["natural=beach"], ["beach", "swim"], "beach", False),
     "waterfall": (["waterway=waterfall"], ["waterfall", "nature", "trek"], "trek", False),
     "fort": (["historic=fort", "historic=castle"], ["fort", "heritage", "photography"], "walk", False),
@@ -187,7 +187,7 @@ def _from_google(p: dict, category: str, kind: str = "place") -> dict:
         "kind": kind,
         "lat": p["location"]["latitude"],
         "lng": p["location"]["longitude"],
-        "tags": tags,
+        "tags": sun_tags(tags, p["displayName"]["text"]),
         "activity": activity,
         "indoor": indoor,
         "cost_inr": 0,
@@ -204,7 +204,31 @@ def _from_google(p: dict, category: str, kind: str = "place") -> dict:
     }
 
 
-def google_places(categories: list, lat: float, lng: float, radius_m: int) -> list:
+# Google has no place type for a viewpoint, so one is recognised by its name. A plain
+# tourist attraction is never tagged as a sunset spot just because it was searched for.
+VIEWPOINT_NAME = re.compile(r"sunset|sunrise|view ?point|lookout|\bpoint\b", re.I)
+VIEWPOINT_QUERY = "sunset viewpoint"
+SUNRISE_QUERY = "sunrise viewpoint"
+
+
+def sun_tags(tags: list, name: str, wanted: str = "") -> list:
+    """A viewpoint is tagged for sunrise or for sunset, not both, when there is anything to
+    tell them apart: its own name first, else which of the two it was searched for.
+    """
+    low = name.lower()
+    named = [t for t in ("sunrise", "sunset") if t in low]
+    keep = named[0] if len(named) == 1 else wanted if wanted in ("sunrise", "sunset") else ""
+    return [t for t in tags if not keep or t not in ("sunrise", "sunset") or t == keep]
+
+
+def _category(p: dict, wanted: list) -> str:
+    own = set(p.get("types", [])) | {p.get("primaryType")}
+    if "viewpoint" in wanted and VIEWPOINT_NAME.search(p["displayName"]["text"]):
+        return "viewpoint"
+    return next((c for c in wanted if c != "viewpoint" and own & set(GOOGLE_TYPES[c])), "attraction")
+
+
+def google_places(categories: list, lat: float, lng: float, radius_m: int, hint: str = "") -> list:
     wanted = [c for c in categories if c in GOOGLE_TYPES] or DEFAULT_CATEGORIES
     types = sorted({t for c in wanted for t in GOOGLE_TYPES[c]})
     found = _google_post(
@@ -220,12 +244,19 @@ def google_places(categories: list, lat: float, lng: float, radius_m: int) -> li
             },
         },
     )
-    places = []
-    for p in found:
-        own = set(p.get("types", [])) | {p.get("primaryType")}
-        category = next((c for c in wanted if own & set(GOOGLE_TYPES[c])), wanted[0])
-        places.append(_from_google(p, category))
-    return places
+    places = {f"g-{p['id']}": _from_google(p, _category(p, wanted)) for p in found}
+    if "viewpoint" in wanted:
+        # a search by type cannot ask for sunset spots, so ask for them in words as well
+        try:
+            words = SUNRISE_QUERY if "sunrise" in hint.lower() else VIEWPOINT_QUERY
+            spots = google_find(words, lat, lng, category="viewpoint")
+        except (RuntimeError, requests.RequestException):
+            spots = []  # the places found by type are still worth having
+        sun = "sunrise" if words == SUNRISE_QUERY else "sunset"
+        places.update({
+            s["id"]: {**s, "tags": sun_tags(s["tags"], s["name"], sun)} for s in spots if "lodging" not in s["types"]
+        })
+    return list(places.values())
 
 
 def google_find(
@@ -323,6 +354,81 @@ def reel_links(place: str, city: str) -> list:
         ]
         hit.sort(key=lambda v: "/reel/" not in v["url"])  # actual reels before profile pages
         quota.remember(key, hit)
+    return hit
+
+
+# ---------- places Instagram names for one kind of thing in one town ----------
+
+MAX_REEL_SPOTS = 6
+
+
+class ReelSpot(BaseModel):
+    name: str
+    source_url: str
+
+
+class ReelSpots(BaseModel):
+    spots: list[ReelSpot]
+
+
+def same_place(a: str, b: str, ignore: tuple = ()) -> bool:
+    """True when two names are the same venue: 'Monsoon Palace' and 'Sajjangarh Monsoon
+    Palace'. Generic words and the kind searched for ('sunset') do not count as a match.
+    """
+    def words(name: str) -> set:
+        found = re.findall(r"[a-z0-9]+", core_name(name).lower())
+        return {w for w in found if len(w) > 2 and w not in GENERIC_WORDS and w not in ignore}
+
+    x, y = words(a), words(b)
+    if not x or not y:
+        return core_name(a).lower() == core_name(b).lower()
+    return x <= y or y <= x
+
+
+def reel_spots(kind: str, city: str) -> list:
+    """The places public Instagram posts name for one kind of thing in one town, e.g. sunset
+    spots in Udaipur: [{"name", "url"}]. One Tavily credit and one small model call per kind
+    and town, then cached. A name is kept only when the post it is credited to contains it.
+    """
+    key = f"reelspots:{kind}:{city.lower()}"
+    hit = quota.cached(key)
+    if hit is not None:
+        return hit
+    search_key = f"reelsearch:{kind}:{city.lower()}"
+    results = quota.cached(search_key)
+    if results is None:
+        results = tavily(f"best {kind} spots in {city}", max_results=8, include_domains=["instagram.com"])
+        quota.remember(search_key, results)  # so a failed model call never costs a second credit
+    posts = {r["url"]: f"{r.get('title', '')} {r.get('content', '')}" for r in results}
+    if not posts:
+        return []
+    pages = "\n\n".join(f"URL: {url}\n{text[:800]}" for url, text in posts.items())
+    client = openai.OpenAI(base_url=OPENROUTER_URL, api_key=os.getenv("OPENROUTER_API_KEY"))
+    completion = client.chat.completions.parse(
+        model=os.getenv("OO_MODEL", "anthropic/claude-haiku-5.5"),
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "These are Instagram posts found by a search. List the specific, named places "
+                    "in the given town that a post recommends for the given kind of outing. Use "
+                    "only names written in the posts, spelled as written, each with the URL of "
+                    "the post that names it. Leave out hotels, the town itself, and anything "
+                    "vague such as 'the lake' or 'old city'. Return an empty list if none."
+                ),
+            },
+            {"role": "user", "content": f"Town: {city}\nKind of outing: {kind}\n\nPosts:\n{pages}"},
+        ],
+        response_format=ReelSpots,
+    )
+    parsed = completion.choices[0].message.parsed
+    hit, seen = [], set()
+    for s in (parsed.spots if parsed else []):
+        if s.source_url in posts and is_about(s.name, posts[s.source_url]) and s.name.lower() not in seen:
+            seen.add(s.name.lower())
+            hit.append({"name": s.name, "url": s.source_url})
+    hit = hit[:MAX_REEL_SPOTS]
+    quota.remember(key, hit)
     return hit
 
 
@@ -461,11 +567,13 @@ def describe(name: str, what: str | None, details: dict) -> dict:
                 "content": (
                     "Describe a place for a traveller using only the details given. "
                     "about: one short sentence saying what the place is, from its type and "
-                    "description. reviews_say: one short sentence summarising what the visitor "
-                    "reviews mention (what people do there, what they liked or disliked); it will "
-                    "be shown after the words 'Reviews say:', so do not start it with 'Reviewers' "
-                    "or 'Visitors'. Leave reviews_say empty if there are no reviews, and about "
-                    "empty if type and description say nothing. Never add facts, prices, hours or "
+                    "description. Leave about empty when all you could say is its name and type "
+                    "('X is a park'), since both are already shown. reviews_say: at most 18 words "
+                    "on what the reviews add that about does not already say: practical things "
+                    "such as effort, crowds, timing, what to bring, or a complaint. Never repeat "
+                    "about in other words; if the reviews add nothing new, leave it empty. It is "
+                    "shown after the words 'Reviews say:', so do not start it with 'Reviewers' or "
+                    "'Visitors'. Leave reviews_say empty if there are no reviews. Never add facts, prices, hours or "
                     "history that are not in the details. Plain text, no superlatives."
                 ),
             },
@@ -609,3 +717,329 @@ def subject_check(place: str, what: str | None, links: list) -> list:
     if len(verdicts) != len(links):
         return []  # an answer that does not line up cannot be trusted for any of them
     return [v for v, ok in zip(links, verdicts) if ok]
+
+
+# ---------- the buddy's own words: always built on checked facts, never beyond them ----------
+
+# How hard the model thinks. Deciding (what a message means, which place suits someone) gets
+# high effort. Wording gets low effort, because it runs on every reply and a written line is
+# checked against the facts afterwards anyway. Both can be set: OO_EFFORT, OO_VOICE_EFFORT.
+THINK = {"reasoning": {"effort": os.getenv("OO_EFFORT", "high")}}
+VOICE_THINK = {"reasoning": {"effort": os.getenv("OO_VOICE_EFFORT", "low")}}
+
+
+class Said(BaseModel):
+    line: str
+
+
+def _say(system: str, user: str) -> str:
+    client = openai.OpenAI(base_url=OPENROUTER_URL, api_key=os.getenv("OPENROUTER_API_KEY"))
+    completion = client.chat.completions.parse(
+        model=os.getenv("OO_MODEL", "anthropic/claude-haiku-5.5"),
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+        response_format=Said,
+        extra_body=VOICE_THINK,
+    )
+    parsed = completion.choices[0].message.parsed
+    return parsed.line.strip() if parsed else ""
+
+
+BUDDY_MAX_CHARS = 280
+REACT_MAX_CHARS = 420
+VOICE = (
+    "Your voice: an excited friend who knows travel, texting. Pick up on what they said and play "
+    "it back with energy, the way a friend would ('Udaipur for three more days and you LOVE "
+    "sunsets?'). Contractions, short punchy sentences, one or two emojis that fit, the odd word "
+    "in capitals for emphasis. Have an opinion and a plan. Never sound like a form being "
+    "confirmed: no 'Got it', 'Noted', 'I'll remember that', 'On it', and no brochure words such "
+    "as hidden gem, must-visit, nestled, vibrant."
+)
+
+
+def grounded(line: str, facts: str, limit: int = BUDDY_MAX_CHARS) -> bool:
+    """A cheap guard on a model-written line: short enough, and every number in it is one
+    that the facts contain. A line that fails is dropped in favour of the plain reasons.
+    """
+    numbers = re.findall(r"\d+(?:\.\d+)?", line)
+    return bool(line) and len(line) <= limit and all(n in facts for n in numbers)
+
+
+def buddy_line(place: dict, reasons: list, notes: list, now: str, likes: list = ()) -> str:
+    """One or two sentences, in a friend's voice, on why this place for this traveller.
+    Written by a model from the checked facts only; "" when it strays or cannot be written.
+    """
+    facts = "\n".join(x for x in [
+        f"Place: {place['name']} ({place.get('what') or 'place'})",
+        f"Description: {place.get('about')}" if place.get("about") else "",
+        f"What reviews say: {place.get('reviews_say')}" if place.get("reviews_say") else "",
+        f"Distance: {place['distance_m'] / 1000:.1f} km" if place.get("distance_m") is not None else "",
+        "Open right now: yes" if place.get("hours_verified") else "Open right now: not known",
+        f"Local time now: {now[11:16]}" if now else "",
+        f"Why I picked it: {' '.join(reasons)}" if reasons else "",
+        f"What they love: {', '.join(likes)}" if likes else "",
+        f"What they told me about themselves: {'; '.join(notes)}" if notes else "",
+    ] if x)
+    line = _say(
+        "You are a travel buddy texting a friend about one place you picked for them. Write one "
+        "or two short sentences, at most 30 words, speaking to them as 'you'. " + VOICE + " "
+        "The description and the reviews are printed right under your message, so do not retell "
+        "them: give the personal angle, and at most one tip taken from them. Only credit them "
+        "with tastes listed under 'What they love'; a sunrise lover is not a sunset lover. If "
+        "the place does not really match what they love, say so honestly in a few words. "
+        "Say why they would enjoy it, or give one practical tip, drawing on why you picked it. "
+        "Use only the facts given. Do not add any detail that is not in them: no views, dishes, "
+        "history, prices, opening times or crowds unless the facts say so. Do not say it is open "
+        "unless the facts say yes. Mention what they told you about themselves only when the "
+        "facts support the link. Do not repeat the place's name, its rating or its distance, "
+        "which are shown beside your message. No hashtags.",
+        facts,
+    )
+    return line if grounded(line, facts) else ""
+
+
+CAN_DO = (
+    "find one verified place near them (they share a location, or say e.g. 'somewhere to eat' "
+    "or 'a cafe in Udaipur'), plan a trip ('plan 2 days in Udaipur'), say what a town is known "
+    "for buying, track a trip budget and spending, remember likes, dislikes and what they packed, "
+    "match outfits to places, and speak up on its own when they share live location"
+)
+
+
+def chat_reply(text: str, memory: str) -> str:
+    """A short conversational reply to small talk or a general travel question. It may not
+    name venues, prices or times: those only ever come from the checked pipeline.
+    """
+    return _say(
+        "You are Outofoffice, a travel buddy in a chat app. Reply in one to three short sentences, "
+        "specific to what they said. " + VOICE + " You can chat, react, and share general, "
+        "widely known travel advice (weather by season, what to carry, etiquette, how long "
+        "things take). Never name a specific venue, restaurant, shop, hotel, price, opening time "
+        "or event, because you only recommend places you have checked: when they need one, tell "
+        "them in passing what to send you to get it. Promise only that a place you find will be "
+        "real and checked, never that it will match their diet or other wishes. Use what you remember about them when it "
+        f"is relevant. What you can do: {CAN_DO}. No lists.",
+        f"What I remember about them:\n{memory or 'nothing yet'}\n\nTheir message: {text}",
+    )
+
+
+def react(text: str, understood: list, memory: str) -> str:
+    """The buddy's reaction to a message, in place of a row of confirmations. It says what
+    was taken in and what happens next, in a friend's voice. "" when it strays, so the plain
+    confirmations are sent instead.
+    """
+    facts = f"{text}\n" + "\n".join(understood) + f"\n{memory}"
+    line = _say(
+        "You are Outofoffice, a travel buddy in a chat app. The traveller just sent a message. "
+        "Below it is what you understood and what you are doing about it. " + VOICE + " "
+        "How much to say depends on the message. "
+        "If they only asked for something (somewhere to eat, another suggestion, a plan): one "
+        "lively line, at most 20 words, that says you are on it. No plan, no list. "
+        "If they told you about themselves or the trip (where, how long, what they love or "
+        "avoid, a budget): two or three short sentences, at most 45 words. React to it, then say "
+        "how you would shape their time in terms of kinds of experience that follow from what "
+        "THEY said (for a sunset lover with three evenings that might be one classic lake view, "
+        "one panoramic hilltop, one offbeat spot in nature; build yours from their message, do "
+        "not reuse this one), then lead into what you are doing next. "
+        "Everything you understood must come across, including any amount of money exactly as "
+        "given. Rules that always hold: never name a specific venue, restaurant, shop, dish, "
+        "price or opening time, only kinds of place, because the places come from a checked "
+        "search. Never promise a place will suit their diet or other wishes: say you will keep "
+        "it in mind. Do not invent facts about the town. When you are about to find places, do "
+        "not ask a question: the places come next and the question after them. If nothing is "
+        "being searched yet, end by asking what they want first, and do not mention searching.",
+        f"Their message: {text}\n\nWhat I understood and am doing:\n" + "\n".join(f"- {u}" for u in understood)
+        + f"\n\nWhat I remember about them:\n{memory or 'nothing yet'}",
+    )
+    return line if grounded(line, facts, REACT_MAX_CHARS) else ""
+
+
+class ShortLine(BaseModel):
+    place_id: str
+    line: str
+
+
+class ShortStory(BaseModel):
+    lines: list[ShortLine]
+    ask: str
+
+
+def _place_facts(p: dict) -> str:
+    return " | ".join(x for x in [
+        f"id={p['id']}", p["name"], p.get("what") or "place",
+        f"description: {p['summary']}" if p.get("summary") else "no description",
+        f"rated {p['rating']} by {p['rating_count']} people" if p.get("rating") and p.get("rating_count") else "",
+        f"{p['distance_m'] / 1000:.1f} km away" if p.get("distance_m") is not None else "",
+        "also named in Instagram posts for this" if p.get("reel") else "",
+    ] if x)
+
+
+def shortlist_story(places: list, kinds: list, notes: list, city: str) -> dict:
+    """The wording around a few already-verified places: one line each on why, and a closing
+    question. The model chooses words only; a line that strays from its place's facts is dropped.
+    """
+    facts = {p["id"]: _place_facts(p) for p in places}
+    client = openai.OpenAI(base_url=OPENROUTER_URL, api_key=os.getenv("OPENROUTER_API_KEY"))
+    completion = client.chat.completions.parse(
+        model=os.getenv("OO_MODEL", "anthropic/claude-haiku-5.5"),
+        messages=[
+            {"role": "system", "content": (
+                "You are a travel buddy who has just found a few places for a friend. For each "
+                "place write one line, at most 16 words, on why it suits what they love, using "
+                "only that place's own facts below: its type, description, rating and distance. "
+                "With no description, keep to what its name and type make certain. Never guess "
+                "how busy, quiet or empty a place will be. Do not add "
+                "views, history, timings, prices or crowds that the facts do not state. Do not "
+                "repeat the place's name, its rating or its distance: those are shown beside your "
+                "line, so say what kind of morning or evening it would be instead. Then write "
+                "`ask`: only a question, at most 18 words, offering two or three next steps from: "
+                "food, a full day-by-day plan, more ideas of this kind, what to pack. Do not "
+                "greet them or react again in `ask`; that was already said. " + VOICE
+            )},
+            {"role": "user", "content": (
+                f"Town: {city or 'unknown'}\nThey love: {', '.join(kinds)}\n"
+                f"About them: {'; '.join(notes) or 'nothing else'}\n\nPlaces:\n" + "\n".join(facts.values())
+            )},
+        ],
+        response_format=ShortStory,
+        extra_body=VOICE_THINK,
+    )
+    parsed = completion.choices[0].message.parsed
+    if parsed is None:
+        return {}
+    lines = {x.place_id: x.line.strip() for x in parsed.lines
+             if x.place_id in facts and grounded(x.line.strip(), facts[x.place_id], 160)}
+    ask = parsed.ask.strip()
+    return {"lines": lines, "ask": ask if ask and len(ask) <= 200 and not re.search(r"\d", ask) else ""}
+
+
+class Fit(BaseModel):
+    place_id: str
+
+
+def best_fit(places: list, notes: list) -> str | None:
+    """Of a few places that all passed the checks, the id of the one that best suits what
+    the traveller said about themselves. A choice between verified options, not a claim.
+    """
+    listing = "\n".join(
+        f"- id={p['id']} | {p['name']} | {p.get('what') or 'place'} | {p.get('summary') or 'no description'}"
+        for p in places
+    )
+    client = openai.OpenAI(base_url=OPENROUTER_URL, api_key=os.getenv("OPENROUTER_API_KEY"))
+    completion = client.chat.completions.parse(
+        model=os.getenv("OO_MODEL", "anthropic/claude-haiku-5.5"),
+        messages=[
+            {"role": "system", "content": (
+                "Choose the one place from the list that best suits this traveller, given what "
+                "they said about themselves. The list is in order of preference already, so keep "
+                "the first one unless another clearly suits them better. Answer with its id exactly."
+            )},
+            {"role": "user", "content": f"About the traveller: {'; '.join(notes)}\n\nPlaces:\n{listing}"},
+        ],
+        response_format=Fit,
+        extra_body=THINK,
+    )
+    parsed = completion.choices[0].message.parsed
+    return parsed.place_id if parsed and parsed.place_id in {p["id"] for p in places} else None
+
+
+# ---------- wardrobe: what is packed, and where it will photograph well ----------
+
+FABRICS = ["linen", "cotton", "silk", "wool", "quick-dry", "synthetic", "denim", "other"]
+
+
+class Outfit(BaseModel):
+    is_clothing: bool  # false when the photo does not show an outfit or garment
+    name: str  # a few words, e.g. "flowy printed maxi dress"
+    colour: str
+    fabric: str  # one of FABRICS; "other" when it cannot be told
+    formality: str  # casual, smart, ethnic or formal
+    style: list[str]  # up to four words, e.g. ["flowy", "printed", "full-length"]
+
+
+def see_outfit(image_b64: str, media_type: str = "image/jpeg") -> Outfit:
+    """Describe the outfit in one photo. Done once, when the traveller packs: the result is
+    stored as words and the photo itself is not kept.
+    """
+    client = openai.OpenAI(base_url=OPENROUTER_URL, api_key=os.getenv("OPENROUTER_API_KEY"))
+    completion = client.chat.completions.parse(
+        model=os.getenv("OO_MODEL", "anthropic/claude-haiku-5.5"),
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Describe the main outfit or garment in the photo for a packing list. Describe "
+                    "only the clothing: nothing about the person wearing it. "
+                    f"fabric must be one of: {', '.join(FABRICS)}; use 'other' if you cannot tell. "
+                    "formality is one of: casual, smart, ethnic, formal. Set is_clothing to false "
+                    "if the photo does not show clothing."
+                ),
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "What outfit is this?"},
+                    {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{image_b64}"}},
+                ],
+            },
+        ],
+        response_format=Outfit,
+    )
+    parsed = completion.choices[0].message.parsed
+    if parsed is None:
+        raise ValueError("the photo could not be described")
+    if parsed.fabric not in FABRICS:
+        parsed.fabric = "other"
+    return parsed
+
+
+class Pairing(BaseModel):
+    outfit_id: str
+    place_id: str
+    why: str
+    pose: str = ""  # one shot idea for that outfit in that place
+
+
+class Pairings(BaseModel):
+    pairings: list[Pairing]
+
+
+def style_match(outfits: list, places: list) -> list:
+    """Pair each packed outfit with the place in the plan where it would photograph best.
+    This is styling advice, an opinion: it is presented as a suggestion, never as fact.
+    """
+    wardrobe = "\n".join(
+        f"- id={o['id']} | {o['name']} | {o.get('colour')} | {o.get('fabric')} | {o.get('formality')} | "
+        f"{', '.join(o.get('style') or [])}" for o in outfits
+    )
+    spots = "\n".join(
+        f"- id={p['id']} | {p['name']} | {p.get('what') or 'place'} | {p.get('summary') or 'no description'}"
+        for p in places
+    )
+    client = openai.OpenAI(base_url=OPENROUTER_URL, api_key=os.getenv("OPENROUTER_API_KEY"))
+    completion = client.chat.completions.parse(
+        model=os.getenv("OO_MODEL", "anthropic/claude-haiku-5.5"),
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are a travel buddy with an eye for photos. For each outfit, choose the one "
+                    "place from the list where it would look best in pictures, and say why in at "
+                    "most fourteen words, in terms of the setting and the outfit (colour against "
+                    "the backdrop, movement of the fabric, the mood of the place). Also respect "
+                    "practicality: nothing delicate or full-length for a trek, waterfall or beach. "
+                    "Also give `pose`: one shot idea for that outfit there, at most fourteen words, such "
+                    "as where to stand or how to move, built only on the place's type and description. "
+                    "Use only the places given and only what their type and description say about "
+                    "them. One pairing per outfit, using the ids exactly as given."
+                ),
+            },
+            {"role": "user", "content": f"Outfits:\n{wardrobe}\n\nPlaces:\n{spots}"},
+        ],
+        response_format=Pairings,
+    )
+    parsed = completion.choices[0].message.parsed
+    outfit_ids, place_ids = {o["id"] for o in outfits}, {p["id"] for p in places}
+    return [
+        x.model_dump() for x in (parsed.pairings if parsed else [])
+        if x.outfit_id in outfit_ids and x.place_id in place_ids
+    ]

@@ -12,8 +12,10 @@ new messages. Three kinds of input:
 """
 import app.trace  # noqa: F401  MUST be the first import in every entry point
 
+import base64
 import html
 import os
+import threading
 import time
 from datetime import datetime, timezone
 
@@ -21,7 +23,7 @@ import requests
 import urllib3.util.connection
 from neatlogs import span
 
-from app import assistant
+from app import assistant, messages
 from app.assistant import Intent
 from app.graph import run_once
 
@@ -56,7 +58,10 @@ BUTTONS = {
     "save": ("🔖 Save for later", Intent(intent="save")),
     "more": ("🔄 Suggest another", Intent(intent="more")),
     "info": ("ℹ️ Tell me more", Intent(intent="info")),
+    "videos": ("🎥 More videos", Intent(intent="videos")),
 }
+PHOTO_MAX_SIDE = 1280  # outfit photos are read once; a mid-size copy is plenty
+REF = "|"  # "save|3f9a1c2e": the action, then the card it is for
 ABOUT = "about:"  # "about:3" opens the card of the fourth place in the last plan
 
 
@@ -66,7 +71,7 @@ def incoming(update: dict) -> dict | None:
     """
     button = update.get("callback_query")
     if button:
-        data = button.get("data", "")
+        data, _, ref = button.get("data", "").partition(REF)
         if "message" not in button:
             return None
         if data in BUTTONS:
@@ -80,6 +85,7 @@ def incoming(update: dict) -> dict | None:
             "kind": "button",
             "callback_id": button["id"],
             "intent": intent,
+            "ref": ref,
             "now": datetime.now().astimezone().isoformat(timespec="seconds"),
             "text": label,
             "lat": None,
@@ -96,6 +102,11 @@ def incoming(update: dict) -> dict | None:
         "lat": None,
         "lng": None,
     }
+    if message.get("photo"):
+        # Telegram offers several sizes; take the largest that is not needlessly big
+        sizes = sorted(message["photo"], key=lambda x: x.get("width", 0))
+        fit = [x for x in sizes if max(x.get("width", 0), x.get("height", 0)) <= PHOTO_MAX_SIDE] or sizes[:1]
+        return {**out, "kind": "photo", "file_id": fit[-1]["file_id"], "text": message.get("caption", "")}
     location = message.get("location")
     if location:
         live = "live_period" in location or "edited_message" in update
@@ -112,12 +123,18 @@ def render(reply: str) -> dict:
     params = {"text": text[:MAX_BODY], "parse_mode": "HTML", "disable_web_page_preview": True}
     rows = []
     if getattr(reply, "links", None):
-        rows.append([{"text": label, "url": url} for label, url in reply.links])
+        links = [{"text": label, "url": url} for label, url in reply.links]
+        # a card's own links share a row; a longer list wraps two to a row so labels stay readable
+        rows += [links] if len(links) <= 3 else [links[i:i + 2] for i in range(0, len(links), 2)]
     if getattr(reply, "actions", False):
-        actions = [{"text": label, "callback_data": data} for data, (label, _) in BUTTONS.items()]
-        rows += [actions[:2], actions[2:4], actions[4:]]
-    choices = [{"text": label[:28], "callback_data": f"{ABOUT}{key}"} for label, key in getattr(reply, "choices", [])]
-    rows += [choices[i:i + 2] for i in range(0, len(choices), 2)]
+        ref, hide = getattr(reply, "ref", ""), getattr(reply, "hide", ())
+        # each button names its own card, so tapping one on an older card acts on that place
+        actions = [{"text": label, "callback_data": f"{data}{REF}{ref}" if ref else data}
+                   for data, (label, _) in BUTTONS.items() if data not in hide]
+        rows += [actions[i:i + 2] for i in range(0, len(actions), 2)]
+    # one place per row, so a long name is shown whole
+    rows += [[{"text": messages.short(label, 48), "callback_data": f"{ABOUT}{key}"}]
+             for label, key in getattr(reply, "choices", [])]
     if rows:
         params["reply_markup"] = {"inline_keyboard": rows}
     elif getattr(reply, "ask_location", False):
@@ -147,6 +164,17 @@ def deliver(chat: int, reply: str) -> None:
     call("sendMessage", chat_id=chat, **params)
 
 
+def download(file_id: str) -> str:
+    """Fetch a file the traveller sent, as base64. It is held in memory for one model call
+    and never written to disk.
+    """
+    path = call("getFile", file_id=file_id)["file_path"]
+    r = SESSION.get(f"https://api.telegram.org/file/bot{os.environ['TELEGRAM_BOT_TOKEN']}/{path}", timeout=30)
+    if not r.ok:
+        raise RuntimeError(f"telegram file download failed: {r.status_code}")
+    return base64.b64encode(r.content).decode()
+
+
 def allowed(chat: int) -> bool:
     """TELEGRAM_ALLOWED_CHATS is a comma-separated list of chat ids; unset means anyone."""
     listed = os.getenv("TELEGRAM_ALLOWED_CHATS", "").replace(" ", "")
@@ -161,11 +189,26 @@ def respond(message: dict) -> str | None:
         if message["kind"] == "live":
             return assistant.on_live_location(conn, message["lat"], message["lng"], message["now"], run_once)
         chat = message["chat"]
+        if message["kind"] == "photo":
+            message = {**message, "image": download(message["file_id"]), "image_type": "image/jpeg"}
         return assistant.handle(
-            conn, message, run_once, notify=lambda text: call("sendMessage", chat_id=chat, text=text)
+            conn, message, run_once, notify=lambda reply: deliver(chat, reply)
         )
     finally:
         conn.close()
+
+
+TYPING_S = 4  # Telegram shows "typing..." for about five seconds per request
+
+
+def keep_typing(chat: int, done: threading.Event) -> None:
+    """Show "typing..." at once and keep it showing until the reply is ready."""
+    while not done.is_set():
+        try:
+            call("sendChatAction", chat_id=chat, action="typing")
+        except (requests.RequestException, RuntimeError):
+            return  # cosmetic: never worth failing a reply over
+        done.wait(TYPING_S)
 
 
 def process(message: dict) -> None:
@@ -173,16 +216,18 @@ def process(message: dict) -> None:
         call("sendMessage", chat_id=message["chat"],
              text=f"This bot is private. Chat id {message['chat']} is not on its list.")
         return
+    done = threading.Event()
     try:
         if message["kind"] == "button":
             call("answerCallbackQuery", callback_query_id=message["callback_id"])  # stops the button spinner
         if message["kind"] != "live":
-            # shows "typing..." in the chat at once, while the message is being understood
-            call("sendChatAction", chat_id=message["chat"], action="typing")
+            threading.Thread(target=keep_typing, args=(message["chat"], done), daemon=True).start()
         reply = respond(message)
     except Exception as e:  # the traveller should hear something even when a run fails
         print(f"error handling update: {type(e).__name__}: {e}")
         reply = "Something went wrong on my side. Try again in a moment."
+    finally:
+        done.set()
     if reply:
         deliver(message["chat"], reply)
     print(f"{message['now'][11:19]}  {message['kind']:<5} -> {'replied' if reply else 'stayed quiet'}")

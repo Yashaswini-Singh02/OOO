@@ -7,7 +7,7 @@ from pydantic import BaseModel, ValidationError
 from app import gi, tools
 from app.geo import distance_m
 from app.hours import is_open
-from app.providers import CATEGORIES, DEFAULT_CATEGORIES
+from app.providers import CATEGORIES, DEFAULT_CATEGORIES, same_place, sun_tags
 from app.state import RoveState
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1"
@@ -41,8 +41,12 @@ def plan_queries(state: RoveState) -> ScoutQueries:
         f"Weather: {state.get('weather', 'unknown')}\n"
         f"Days left on the trip: {state.get('days_left', 'unknown')}\n"
         f"Tags the traveller likes most: {', '.join(liked) or 'none recorded'}\n"
+        f"What the traveller said about themselves: {'; '.join(state.get('notes', [])) or 'nothing'}\n"
         + ("Purpose: an itinerary for a visit of several days, so choose four varied categories "
            "and the largest sensible radius.\n" if state.get("trigger") == "trip" else "")
+        + ("Purpose: places where an outfit would photograph well, so choose four varied categories "
+           "that make good backdrops, mixing sights with somewhere to sit such as a cafe or "
+           "restaurant, and the largest sensible radius.\n" if state.get("purpose") == "outfit" else "")
         + f"Kinds of place the traveller does not want (never choose these): "
         f"{', '.join(state.get('dislikes', [])) or 'none'}\n"
         f"Venues already rejected this run: "
@@ -117,6 +121,40 @@ def categories_for(kinds: list) -> list:
     return [c for c, (_, tags, _, _) in CATEGORIES.items() if c in kinds or set(tags) & set(kinds)]
 
 
+MAX_REEL_LOOKUPS = 3  # one Google call each, for places Instagram names that Google's search missed
+
+
+def with_reels(places: list, only: list, state: RoveState) -> list:
+    """Cross-check a request for one kind of place against Instagram. A place that posts
+    name is marked with the post; one they name that the search missed is looked up and
+    added. Every place still comes from Google and still has to pass the gate.
+    """
+    city = state.get("city", "")
+    out, missing = [dict(p) for p in places], []
+    for spot in tools.reel_spots(only[0], city):
+        match = next((p for p in out if same_place(p["name"], spot["name"], tuple(only))), None)
+        if match:
+            match["reel"] = spot["url"]
+        else:
+            missing.append(spot)
+    category = (categories_for(only) or ["attraction"])[0]
+    for spot in missing[:MAX_REEL_LOOKUPS]:
+        found = tools.lookup(f"{spot['name']} {city}", state.get("lat"), state.get("lng"), category)
+        if found and found["id"] not in {p["id"] for p in out}:
+            out.append({**found, "tags": sun_tags(found.get("tags", []), found["name"], only[0]), "reel": spot["url"]})
+    return out
+
+
+LIKED_TAGS = 2  # how many of the traveller's favourite tags steer the search
+
+
+def liked_categories(state: RoveState) -> list:
+    """Search categories for the tags this traveller likes most."""
+    tags = state.get("taste", {}).get("tags", {})
+    top = sorted((t for t, w in tags.items() if w > 0), key=lambda t: -tags[t])[:LIKED_TAGS]
+    return categories_for(top)
+
+
 def scout(state: RoveState) -> dict:
     warnings = list(state.get("warnings", []))
     # Loop guard: scout already ran if candidates exist, so this entry is a replan.
@@ -141,6 +179,10 @@ def scout(state: RoveState) -> dict:
             queries = ScoutQueries(place_query=DEFAULT_QUERY, radius_m=DEFAULT_RADIUS_M)
 
     dislikes = state.get("dislikes", [])
+    # what the traveller likes is always searched for, whatever the model chose
+    queries.categories = liked_categories(state) + [
+        c for c in queries.categories if c not in liked_categories(state)
+    ]
     queries.categories = [c for c in queries.categories if c not in dislikes] or [
         c for c in DEFAULT_CATEGORIES if c not in dislikes
     ]
@@ -148,6 +190,8 @@ def scout(state: RoveState) -> dict:
     places = tools.place_search(
         queries.place_query, state.get("lat", 0.0), state.get("lng", 0.0), radius, queries.categories
     )
+    if only:
+        places = with_reels(places, only, state)
     if tools.use_fixtures():
         # live video lookups cost credits, so feed does one for the venue it nudges
         places = [{**p, "videos": tools.video_search(p["name"])} for p in places]

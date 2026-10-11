@@ -206,6 +206,13 @@ def get_kv(conn: sqlite3.Connection, key: str, default=None):
     return json.loads(row["value"]) if row else default
 
 
+def forget(conn: sqlite3.Connection) -> None:
+    """Wipe everything held about this traveller."""
+    for table in ("taste", "wardrobe", "spend", "saved", "nudges", "kv", "locations"):
+        conn.execute(f"DELETE FROM {table}")
+    conn.commit()
+
+
 def load_profile(conn: sqlite3.Connection) -> dict:
     """The three profile keys of RoveState, ready to merge into the graph input."""
     return {

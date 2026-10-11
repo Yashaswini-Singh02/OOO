@@ -34,7 +34,7 @@ def place_search(
     if use_fixtures():
         return _fixture("places")
     if os.getenv("GOOGLE_API_KEY"):
-        return providers.google_places(categories or [], lat, lng, radius_m)
+        return providers.google_places(categories or [], lat, lng, radius_m, hint=query)
     return providers.overpass_places(categories or [], lat, lng, radius_m, datetime.now().astimezone())
 
 
@@ -92,7 +92,7 @@ def place_about(place: dict) -> dict:
     plain = {"about": place.get("summary") or "", "reviews_say": "", "photo": None, "photo_by": None}
     if use_fixtures() or not place.get("google_id"):
         return plain
-    key = f"place2:{place['google_id']}"
+    key = f"place3:{place['google_id']}"
     hit = quota.cached(key)
     if hit is None:
         try:
@@ -139,13 +139,115 @@ def trip_story(city: str, places: list, spotlight: dict | None) -> dict:
         return {}
 
 
+@span(kind="TOOL", name="buddy_line")
+def buddy_line(place: dict, reasons: list, notes: list, now: str = "", likes: list = ()) -> str:
+    """Why this place, in a friend's voice, from the checked facts only. "" in fixture mode
+    or when the model call fails or strays, in which case the plain reasons are shown.
+    """
+    if use_fixtures():
+        return ""
+    try:
+        return providers.buddy_line(place, reasons, notes, now, list(likes))
+    except openai.OpenAIError:
+        return ""
+
+
+@span(kind="TOOL", name="react")
+def react(text: str, understood: list, memory: str) -> str:
+    """The buddy's reaction to a message, replacing the plain confirmations; "" in fixture
+    mode or when it cannot be written, in which case the confirmations are sent as they are.
+    """
+    if use_fixtures() or not text:
+        return ""
+    try:
+        return providers.react(text, understood, memory)
+    except openai.OpenAIError:
+        return ""
+
+
+@span(kind="TOOL", name="shortlist_story")
+def shortlist_story(places: list, kinds: list, notes: list, city: str = "") -> dict:
+    """{"lines": {place id: why}, "ask": closing question} for a few verified places. Empty in
+    fixture mode or if the model call fails, in which case the places are listed plainly.
+    """
+    if use_fixtures() or not places:
+        return {}
+    try:
+        return providers.shortlist_story(places, kinds, notes, city)
+    except openai.OpenAIError:
+        return {}
+
+
+@span(kind="TOOL", name="chat_reply")
+def chat_reply(text: str, memory: str) -> str:
+    """A conversational reply to small talk or a general question; "" if it cannot be written."""
+    if use_fixtures():
+        return ""
+    try:
+        return providers.chat_reply(text, memory)
+    except openai.OpenAIError:
+        return ""
+
+
+@span(kind="TOOL", name="best_fit")
+def best_fit(places: list, notes: list) -> str | None:
+    """Which of a few verified places suits what the traveller said about themselves."""
+    if use_fixtures() or not notes or len(places) < 2:
+        return None
+    try:
+        return providers.best_fit(places, notes)
+    except openai.OpenAIError:
+        return None
+
+
+@span(kind="TOOL", name="see_outfit", capture_input=False)
+def see_outfit(image_b64: str, media_type: str = "image/jpeg") -> dict | None:
+    """Describe one outfit photo as packing-list words, or None if it shows no clothing.
+    The image is not recorded in the trace and is not stored anywhere.
+    """
+    outfit = providers.see_outfit(image_b64, media_type)
+    return outfit.model_dump(exclude={"is_clothing"}) if outfit.is_clothing else None
+
+
+@span(kind="TOOL", name="style_match")
+def style_match(outfits: list, places: list) -> list:
+    """[{outfit_id, place_id, why}]: where each outfit would photograph best. Fixture mode
+    pairs them in order with no reason, so tests stay offline.
+    """
+    if not outfits or not places:
+        return []
+    if use_fixtures():
+        return [{"outfit_id": o["id"], "place_id": places[i % len(places)]["id"], "why": ""}
+                for i, o in enumerate(outfits)]
+    try:
+        return providers.style_match(outfits, places)
+    except openai.OpenAIError:
+        return []
+
+
+@span(kind="TOOL", name="reel_spots")
+def reel_spots(kind: str, city: str) -> list:
+    """[{name, url}]: places Instagram posts name for a kind of outing in a town. Live mode:
+    one Tavily credit and one small model call per kind and town, then cached. Empty when
+    it cannot be checked, so the suggestion falls back to what Google found.
+    """
+    if use_fixtures() or not city:
+        return []
+    try:
+        return providers.reel_spots(kind, city)
+    except (RuntimeError, requests.RequestException, openai.OpenAIError):
+        return []
+
+
 @span(kind="TOOL", name="lookup")
-def lookup(name: str, lat: float | None = None, lng: float | None = None) -> dict | None:
+def lookup(
+    name: str, lat: float | None = None, lng: float | None = None, category: str = "attraction"
+) -> dict | None:
     """Find one named place, near a point when given. None if it cannot be found."""
     if use_fixtures():
         return next((p for p in _fixture("places") if name.lower() in p["name"].lower()), None)
     try:
-        found = providers.google_find(name, lat, lng)
+        found = providers.google_find(name, lat, lng, category=category)
     except (RuntimeError, requests.RequestException):
         return None
     return found[0] if found else None

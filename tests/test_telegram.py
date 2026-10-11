@@ -56,7 +56,7 @@ class TelegramUpdateTest(unittest.TestCase):
         card = messages.nudge_text({
             "name": "Fort <Aguada>", "kind": "place", "what": "Historical landmark", "address": "Candolim",
             "distance_m": 6211, "hours_verified": True, "rating": 4.4, "rating_count": 51234,
-            "why": ["people rate it 4.4 out of 5"], "about": "A 17th-century fort on the coast.",
+            "why": ["People rate it really well."], "about": "A 17th-century fort on the coast.",
             "reviews_say": "the lighthouse view is worth the climb.",
             "source": "https://maps.google.com/?cid=1",
             "videos": [{"url": "https://youtu.be/a", "source": "youtube"},
@@ -67,12 +67,12 @@ class TelegramUpdateTest(unittest.TestCase):
         self.assertTrue(out["text"].startswith("<b>Fort &lt;Aguada&gt;</b>\n<i>Historical landmark</i>\n"))
         self.assertIn("A 17th-century fort on the coast.", out["text"])
         self.assertIn("\n📍 6.2 km away\n🟢 Open now\n⭐ 4.4 · 51,234 reviews\n", out["text"])  # one fact per line
-        self.assertIn("💡 <b>Why this:</b> people rate it 4.4 out of 5.", out["text"])
+        self.assertIn("💡 People rate it really well.", out["text"])
         self.assertNotIn("Candolim", out["text"])  # no address: the Maps button covers it
         self.assertNotIn("Ruled out", out["text"])
         self.assertNotIn("http", out["text"])  # links are buttons, not raw URLs
         links, feedback, more, info = out["reply_markup"]["inline_keyboard"]
-        self.assertEqual([b["text"] for b in info], ["ℹ️ Tell me more"])
+        self.assertEqual([b["text"] for b in info], ["ℹ️ Tell me more", "🎥 More videos"])
         self.assertIn("Want to know more about this place?", out["text"])
         self.assertEqual([b["text"] for b in links], ["🗺 Maps", "▶️ Video", "🎬 Reel"])
         both = messages.nudge_text({"name": "X", "kind": "place", "hours_verified": True, "source": "https://m",
@@ -144,8 +144,14 @@ class TelegramUpdateTest(unittest.TestCase):
         keyboard = self.tg.render(messages.WELCOME)["reply_markup"]["keyboard"]
         self.assertTrue(keyboard[0][0]["request_location"])
 
+    def test_a_photo_message_picks_a_mid_size_copy(self):
+        sizes = [{"file_id": "s", "width": 90, "height": 160}, {"file_id": "m", "width": 720, "height": 1280},
+                 {"file_id": "l", "width": 1440, "height": 2560}]
+        photo = self.tg.incoming({"message": {"chat": CHAT, "date": 1791600000, "photo": sizes, "caption": "my dress"}})
+        self.assertEqual((photo["kind"], photo["file_id"], photo["text"]), ("photo", "m", "my dress"))
+
     def test_other_updates_are_ignored(self):
-        self.assertIsNone(self.tg.incoming({"message": {"chat": CHAT, "date": 1, "photo": []}}))
+        self.assertIsNone(self.tg.incoming({"message": {"chat": CHAT, "date": 1, "sticker": {}}}))
         self.assertIsNone(self.tg.incoming({"poll": {}}))
 
     def test_allow_list(self):
@@ -155,6 +161,20 @@ class TelegramUpdateTest(unittest.TestCase):
         with patch.dict(os.environ, {"TELEGRAM_ALLOWED_CHATS": ""}):
             self.assertTrue(self.tg.allowed(99))
 
+
+    def test_buttons_name_their_card_and_more_videos_only_shows_when_there_are_more(self):
+        from app import messages
+        base = {"name": "Fort Aguada", "kind": "place", "why": [], "ref": "3f9a1c2e",
+                "videos": [{"url": "https://youtu.be/a", "source": "youtube"}]}
+        rows = self.tg.render(messages.nudge_text(base))["reply_markup"]["inline_keyboard"]
+        taps = [b["callback_data"] for row in rows for b in row if "callback_data" in b]
+        self.assertIn("save|3f9a1c2e", taps)
+        self.assertNotIn("videos|3f9a1c2e", taps)  # the one video is already a button on the card
+        more = {**base, "videos": base["videos"] + [{"url": "https://youtu.be/b", "source": "youtube"}]}
+        rows = self.tg.render(messages.nudge_text(more))["reply_markup"]["inline_keyboard"]
+        self.assertIn("videos|3f9a1c2e", [b.get("callback_data") for row in rows for b in row])
+        tap = self.tg.incoming({"callback_query": {"id": "q", "data": "videos|3f9a1c2e", "message": {"chat": CHAT}}})
+        self.assertEqual((tap["intent"].intent, tap["ref"]), ("videos", "3f9a1c2e"))
 
 class LiveLocationTest(unittest.TestCase):
     def test_live_updates_nudge_only_when_a_trigger_fires_and_saved_spots_work(self):

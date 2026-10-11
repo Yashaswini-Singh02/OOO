@@ -3,6 +3,7 @@ from math import log10
 from app.state import RoveState
 
 SAVED_BONUS = 1.0  # the traveller saved this spot themselves
+REEL_BONUS = 0.5  # Instagram posts name it for what the traveller asked for
 INDOOR_IN_RAIN = 1.0
 OUTDOOR_IN_RAIN = -3.0
 OUTDOOR_ACTIVITIES = {"trek", "beach", "sunset", "market", "walk"}
@@ -15,6 +16,8 @@ def score(candidate: dict, tag_weights: dict) -> float:
 
 def adjust(candidate: dict, state: RoveState) -> float:
     bonus = SAVED_BONUS if candidate.get("id") in state.get("saved", []) else 0.0
+    if candidate.get("reel"):
+        bonus += REEL_BONUS
     if state.get("weather") == "rain":
         if candidate.get("indoor"):
             bonus += INDOOR_IN_RAIN

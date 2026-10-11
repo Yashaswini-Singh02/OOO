@@ -15,6 +15,8 @@ class Reply(str):
     html: str = ""  # the same message with bold, italics and emoji, for channels that render HTML
     photo: str | None = None  # address of a picture to show with the message
     choices: list = []  # [(label, key)] for "tell me about this one" buttons
+    ref: str = ""  # which remembered card the action buttons belong to
+    hide: tuple = ()  # action buttons to leave off, e.g. ("videos",) when there are none to show
 
     def __new__(cls, body: str, title: str = "", links=None, actions=False, ask_location=False,
                 html="", photo=None, choices=None):
@@ -25,6 +27,18 @@ class Reply(str):
         self.photo = photo
         self.choices = choices or []
         return self
+
+
+def rest(reply: str) -> Reply:
+    """A reply without its first line, for when the buddy has already said that part in
+    its own words. Buttons and the picture are kept.
+    """
+    def drop(text: str) -> str:
+        return "\n".join(text.split("\n")[1:]).strip()
+
+    return Reply(drop(str(reply)), links=getattr(reply, "links", None), actions=getattr(reply, "actions", False),
+                 ask_location=getattr(reply, "ask_location", False), html=drop(getattr(reply, "html", "")),
+                 photo=getattr(reply, "photo", None), choices=getattr(reply, "choices", None))
 
 
 WELCOME = Reply(
@@ -40,7 +54,36 @@ WELCOME = Reply(
     ask_location=True,
 )
 
-VIDEO_LABEL = {"youtube": "▶️ Video", "instagram": "🎬 Reel"}
+# how a kind of place reads in a sentence: "you're into sunsets"
+UNCOUNTED = {"art", "food", "heritage", "nature", "photography", "shopping"}
+SPOKEN = {"indoor": "indoor places", "swim": "swimming", "beach": "beaches"}
+
+
+def spoken(tag: str) -> str:
+    return SPOKEN.get(tag) or (tag if tag in UNCOUNTED else f"{tag}s")
+
+
+def trip_text(place: str, days: int, knows_taste: bool, knows_packing: bool) -> Reply:
+    """Confirms where the traveller is, then offers what to do next: only the steps that
+    are still open, so someone who already told us their tastes is not asked again.
+    """
+    got = f"Got it: you're in {place} for {days} more day{'s' if days != 1 else ''}."
+    steps = [
+        ("🗺️", f'"plan {days} day{"s" if days != 1 else ""} in {place}" for a full itinerary'),
+        ("🍽️", '"somewhere to eat" or "a cafe nearby" for one place right now'),
+        ("🛍️", '"what should I buy here?" for what the town is known for'),
+    ]
+    if not knows_taste:
+        steps.append(("❤️", 'tell me your taste, e.g. "I love sunsets" or "I don\'t like museums"'))
+    if not knows_packing:
+        steps.append(("🧳", "tell me what you're packing, or send outfit photos"))
+    foot = "Or share your location and I'll find what's closest and open."
+    plain = [got, "", "What next?"] + [f"- {s}" for _, s in steps] + ["", foot]
+    rich = [escape(got), "", "<b>What next?</b>"] + [f"{i} {escape(s)}" for i, s in steps] + ["", f"<i>{escape(foot)}</i>"]
+    return Reply("\n".join(plain), html="\n".join(rich), ask_location=True)
+
+
+VIDEO_LABEL ={"youtube": "▶️ Video", "instagram": "🎬 Reel"}
 
 
 def _facts(nudge: dict) -> str:
@@ -69,6 +112,9 @@ def _fact_lines(nudge: dict) -> list:
     if nudge.get("cost_inr"):
         lines.append(f"💸 About ₹{nudge['cost_inr']}")
     return lines
+
+
+SHORTLIST_KEY = 100  # button keys from here up open a place in the last shortlist, not the plan
 
 
 def _place_link(p: dict) -> str:
@@ -113,6 +159,9 @@ def _itinerary(nudge: dict) -> Reply:
                 seen.add(v["source"])
 
     ask = "Want the full story on any of these? Tap one, or tell me what to swap."
+    if nudge.get("ask_packing"):
+        ask += ("\n\nWhat are you packing? Tell me, or send photos of your outfits, and I'll match "
+                "each one to the spot where it'll look best in pictures.")
     foot = "Every place here is real and currently operating."
     places = nudge["days"] + ([star] if star and star["id"] not in {p["id"] for p in nudge["days"]} else [])
     choices = [(p["name"], i) for i, p in enumerate(places)]
@@ -120,6 +169,102 @@ def _itinerary(nudge: dict) -> Reply:
         "\n".join(plain + ["", ask, foot]), title=title, links=links, choices=choices,
         html="\n".join(rich + ["", escape(ask), f"<i>{escape(foot)}</i>"]),
     )
+
+
+def shortlist_text(nudge: dict) -> Reply:
+    """Two or three verified places for something the traveller loves, each with a line on
+    why and a button to open it, closing with a question about what they want next.
+    """
+    story = nudge.get("story") or {}
+    lines = story.get("lines") or {}
+    kinds = " and ".join(spoken(k) for k in nudge.get("kinds", [])) or "places"
+    ask = story.get("ask") or f"Which one first? Or tell me what's next: food, a full plan, or more {kinds}?"
+    plain, rich = [], []
+    for i, p in enumerate(nudge["places"], 1):
+        facts = [f"⭐ {p['rating']}"] if p.get("rating") else []
+        if p.get("distance_m") is not None:
+            facts.append(f"{p['distance_m'] / 1000:.1f} km")
+        if p.get("reel"):
+            facts.append("on Instagram too")
+        tail = f" · {' · '.join(facts)}" if facts else ""
+        why = lines.get(p["id"]) or p.get("summary") or ""
+        plain.append(f"{i}. {p['name']}{tail}" + (f"\n   {why}" if why else ""))
+        rich += [f"{i}. <b>{_place_link(p)}</b>{escape(tail)}"] + ([f"   <i>{escape(why)}</i>"] if why else []) + [""]
+    return Reply("\n".join(plain + ["", ask]), html="\n".join(rich + [escape(ask)]),
+                 choices=[(p["name"], SHORTLIST_KEY + i) for i, p in enumerate(nudge["places"])])
+
+
+def pairings_text(pairings: list, outfits: list, places: list, videos: dict | None = None,
+                  ask: str = "", photo: str | None = None) -> Reply:
+    """Where each packed outfit would photograph best, with a shot idea, reels of the place
+    and a button to open it. Styling advice, worded as a suggestion. `ask` closes the message
+    with the next thing the buddy offers.
+    """
+    by_outfit, by_place = {o["id"]: o for o in outfits}, {p["id"]: p for p in places}
+    plain, rich, links, choices = [], ["<b>Where each outfit will shine</b>"], [], []
+    for x in pairings:
+        outfit, place = by_outfit[x["outfit_id"]], by_place[x["place_id"]]
+        why = f": {x['why']}" if x.get("why") else ""
+        plain.append(f"- {outfit['name']} at {place['name']}{why}")
+        rich += ["", f"👗 <b>{escape(outfit['name'])}</b> → {_place_link(place)}"]
+        if x.get("why"):
+            rich.append(f"   <i>{escape(x['why'])}</i>")
+        if x.get("pose"):
+            plain.append(f"  Shot idea: {x['pose']}")
+            rich.append(f"   📸 {escape(x['pose'])}")
+        if place["name"] not in [c[0] for c in choices]:
+            choices.append((place["name"], SHORTLIST_KEY + len(choices)))
+            seen = set()
+            for v in (videos or {}).get(place["id"], []):
+                if v["source"] not in seen and len(links) < 4:  # one reel and one video per place
+                    seen.add(v["source"])
+                    links.append((f"{VIDEO_LABEL.get(v['source'], '▶️ Video')}: {short(place['name'], 22)}", v["url"]))
+    foot = "These are my styling picks, so overrule me freely."
+    tail_plain, tail_rich = ["", foot], ["", f"<i>{escape(foot)}</i>"]
+    if ask:
+        tail_plain += ["", ask]
+        tail_rich += ["", escape(ask)]
+    return Reply("\n".join(plain + tail_plain), title="Where each outfit will shine", html="\n".join(rich + tail_rich),
+                 links=links, choices=choices, photo=photo)
+
+
+def videos_text(name: str, videos: list) -> Reply:
+    """Every video and reel that passed the checks for one place, as a list of links."""
+    if not videos:
+        return Reply(f"I couldn't find any videos that are really about {name}, so I'd rather show none.")
+    plain, rich = [], [f"<b>Watch {escape(name)}</b>"]
+    for kind, label, icon in (("instagram", "Reels", "🎬"), ("youtube", "Videos and vlogs", "▶️")):
+        some = [v for v in videos if v.get("source") == kind]
+        if not some:
+            continue
+        plain.append(f"{label}:")
+        rich += ["", f"{icon} <b>{label}</b>"]
+        for v in some:
+            title = (v.get("title") or "Watch")[:70]
+            plain.append(f"- {title}: {v['url']}")
+            rich.append(f'• <a href="{escape(v["url"])}">{escape(title)}</a>')
+    return Reply("\n".join(plain), title=f"Watch {name}", html="\n".join(rich))
+
+
+def profile_text(profile: dict) -> Reply:
+    """What the buddy remembers about this traveller."""
+    rows = [
+        ("🧭", "Trip", profile.get("trip")),
+        ("❤️", "You like", ", ".join(profile.get("likes", []))),
+        ("🚫", "You skip", ", ".join(profile.get("dislikes", []))),
+        ("📝", "You told me", "; ".join(profile.get("notes", []))),
+        ("🧳", "Packed", ", ".join(profile.get("outfits", []))),
+        ("🔖", "Saved", ", ".join(profile.get("saved", []))),
+        ("💸", "Budget", profile.get("budget")),
+    ]
+    known = [(icon, label, value) for icon, label, value in rows if value]
+    if not known:
+        return Reply("Nothing yet. Tell me where you're going, what you like and what you're packing.")
+    plain = [f"{label}: {value}" for _, label, value in known]
+    rich = ["<b>What I remember about you</b>", ""] + [f"{icon} <b>{label}:</b> {escape(str(value))}" for icon, label, value in known]
+    foot = "Send /forget to wipe all of this."
+    return Reply("\n".join(plain + ["", foot]), title="What I remember about you",
+                 html="\n".join(rich + ["", f"<i>{escape(foot)}</i>"]))
 
 
 def details_text(name: str, details: dict) -> Reply:
@@ -156,25 +301,52 @@ def _plan(nudge: dict) -> Reply:
     return Reply("\n".join(plain), title="Here's how to fit it in", html="\n".join(rich))
 
 
+FILLER = {"over", "from", "this", "that", "with", "their", "there", "people", "though", "while", "which",
+          "about", "into", "also", "very", "place", "visitors", "reviewers", "come", "enjoy"}
+REPEAT = 0.6  # share of a line's words already said above it, beyond which it is left out
+
+
+def repeats(line: str, said: str) -> bool:
+    """True when a line mostly says again what the card has already said."""
+    def words(text: str) -> set:
+        bare = (w.strip(".,;:!?'\"()").lower() for w in text.split())
+        return {w[:6] for w in bare if len(w) > 3 and w not in FILLER}
+
+    mine = words(line)
+    return bool(mine) and len(mine & words(said)) / len(mine) >= REPEAT
+
+
+def short(label: str, limit: int = 30) -> str:
+    """A button label that fits, cut at a word and marked as cut, never mid-word."""
+    if len(label) <= limit:
+        return label
+    return label[:limit].rsplit(" ", 1)[0].rstrip(" ,-") + "…"
+
+
 def nudge_text(nudge: dict) -> Reply:
     if nudge.get("kind") == "plan":
         return _plan(nudge)
     if nudge.get("kind") == "itinerary":
         return _itinerary(nudge)
+    if nudge.get("kind") == "shortlist":
+        return shortlist_text(nudge)
 
     title = nudge["name"]
     if nudge.get("craft"):
         tag = "GI-registered" if nudge.get("gi_registered") else "traditional here"
         title = f"{nudge['name']} for {nudge['craft']} ({tag})"
-    why = "; ".join(nudge.get("why", []))
+    why = " ".join(nudge.get("why", []))
 
     # plain text: one fact per line, no markup
-    plain = [x for x in (nudge.get("what"), nudge.get("about")) if x]
+    say = nudge.get("say")  # the buddy's own words; when present they replace the plain reasons
+    if nudge.get("reviews_say") and repeats(nudge["reviews_say"], f"{say or ''} {nudge.get('about') or ''}"):
+        nudge = {**nudge, "reviews_say": ""}
+    plain = [x for x in (nudge.get("what"), say, nudge.get("about")) if x]
     if nudge.get("reviews_say"):
         plain.append(f"Reviews say: {nudge['reviews_say']}")
     plain.append(_facts(nudge))
-    if why:
-        plain.append(f"Why this: {why}.")
+    if why and not say:
+        plain.append(why)
     if nudge.get("outfit"):
         plain.append(f"Wear your {nudge['outfit']}.")
 
@@ -183,13 +355,15 @@ def nudge_text(nudge: dict) -> Reply:
     rich = [f"<b>{escape(title)}</b>"]
     if nudge.get("what"):
         rich.append(f"<i>{escape(nudge['what'])}</i>")
+    if say:
+        rich += ["", escape(say)]
     if nudge.get("about"):
         rich += ["", escape(nudge["about"])]
     if nudge.get("reviews_say"):
         rich += ["", f"💬 <b>Reviews say:</b> {escape(nudge['reviews_say'])}"]
     rich += [""] + _fact_lines(nudge)
-    if why:
-        rich += ["", f"💡 <b>Why this:</b> {escape(why)}."]
+    if why and not say:
+        rich += ["", f"💡 {escape(why)}"]
     if nudge.get("outfit"):
         rich.append(f"👕 Wear your {escape(nudge['outfit'])}.")
     ask = "Want to know more about this place?"
@@ -208,8 +382,12 @@ def nudge_text(nudge: dict) -> Reply:
         if kind not in seen:
             links.append((label, v["url"]))
             seen.add(kind)
-    return Reply("\n".join(plain), title=title, links=links, actions=True, html="\n".join(rich),
-                 photo=nudge.get("photo"))
+    reply = Reply("\n".join(plain), title=title, links=links, actions=True, html="\n".join(rich),
+                  photo=nudge.get("photo"))
+    reply.ref = nudge.get("ref") or ""
+    # "More videos" is only worth a button when there are more than the card already links to
+    reply.hide = () if len(nudge.get("videos", [])) > len(seen) else ("videos",)
+    return reply
 
 
 def silence_text(result: dict) -> Reply:

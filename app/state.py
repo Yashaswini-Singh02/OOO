@@ -16,6 +16,9 @@ class RoveState(TypedDict, total=False):
     saved: list  # ids of spots the traveller saved
     recent: list  # ids nudged in the last 24 h, never repeated
     dislikes: list  # kinds of place the traveller said they do not want, e.g. ["park"]
+    notes: list  # lasting things the traveller said about themselves, in their words, e.g. ["vegetarian"]
+    shortlist: int  # when set, answer with this many verified places to choose from, not one
+    purpose: str  # "outfit": the places are wanted as backdrops for what the traveller packed
     only: list  # kinds asked for in this one request, e.g. ["food"]; not a lasting taste
 
     # --- profile, loaded from sqlite ---
