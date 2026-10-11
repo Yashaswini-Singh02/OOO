@@ -1,0 +1,18 @@
+[
+  {
+    "id": "arpora-night-market",
+    "name": "Saturday Night Market, Arpora",
+    "kind": "event",
+    "district": "North Goa",
+    "lat": 15.5667,
+    "lng": 73.7667,
+    "tags": ["market", "music", "food", "night"],
+    "activity": "market",
+    "cost_inr": 500,
+    "duration_h": 3,
+    "starts": "2026-10-10T18:00:00+05:30",
+    "exists": true,
+    "open_now": false,
+    "distance_m": 14000
+  }
+]

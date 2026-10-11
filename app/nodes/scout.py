@@ -77,4 +77,7 @@ def scout(state: RoveState) -> dict:
     places = [{**p, "videos": tools.video_search(p["name"])} for p in places]
     events = tools.event_search(state.get("district", ""), *event_window(state))
 
-    return {"candidates": places + events, "replans": replans, "warnings": warnings}
+    # A replan must not hand the gate something it already refused.
+    refused = {r["id"] for r in state.get("rejected", [])}
+    candidates = [c for c in places + events if c["id"] not in refused]
+    return {"candidates": candidates, "replans": replans, "warnings": warnings}
