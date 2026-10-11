@@ -159,3 +159,9 @@ What all is left now
 ---
 
 Let's do the next fixtures, but remember we have to make it actual runtime based. So it would work realtime too. Add a final step as well where user will be talking with the agent via Whatsapp
+
+---
+
+Decision for you: the free OpenStreetMap servers may recover, but they are not something to depend on during a demo. A Google Places key is the reliable option and needs a billing account. Events need a search key such as Tavily, or OpenRouter's web search on your existing credits. Tell me which you want and I'll wire them in.
+|
+for this give me a table of each option in each section
