@@ -53,6 +53,7 @@ CATEGORIES = {
     "museum": (["tourism=museum", "tourism=gallery"], ["museum", "art", "indoor"], "indoor", True),
     "market": (["amenity=marketplace"], ["market", "shopping", "food"], "market", False),
     "cafe": (["amenity=cafe"], ["cafe", "food", "indoor"], "cafe", True),
+    "restaurant": (["amenity=restaurant"], ["restaurant", "food", "indoor"], "food", True),
     "park": (["leisure=park"], ["park", "nature", "walk"], "walk", False),
     "attraction": (["tourism=attraction"], ["attraction"], "walk", False),
 }
@@ -66,6 +67,7 @@ GOOGLE_TYPES = {
     "museum": ["museum", "art_gallery"],
     "market": ["market"],
     "cafe": ["cafe"],
+    "restaurant": ["restaurant"],
     "park": ["park"],
     "attraction": ["tourist_attraction"],
 }
@@ -226,19 +228,19 @@ def google_places(categories: list, lat: float, lng: float, radius_m: int) -> li
     return places
 
 
-def google_find(text: str, lat: float, lng: float, category: str = "attraction", kind: str = "place") -> list:
-    """Free-text lookup near a point, e.g. a named venue or 'cashew feni shop'."""
-    found = _google_post(
-        GOOGLE_TEXT_URL,
-        {
-            "textQuery": text,
-            "maxResultCount": 3,
-            "locationBias": {
-                "circle": {"center": {"latitude": lat, "longitude": lng}, "radius": float(GOOGLE_MAX_RADIUS_M)}
-            },
-        },
-    )
-    return [_from_google(p, category, kind) for p in found]
+def google_find(
+    text: str, lat: float | None = None, lng: float | None = None,
+    category: str = "attraction", kind: str = "place",
+) -> list:
+    """Free-text lookup, e.g. a named venue, 'cashew feni shop' or a city. Results lean
+    towards the given point when there is one.
+    """
+    body = {"textQuery": text, "maxResultCount": 3}
+    if lat is not None:
+        body["locationBias"] = {
+            "circle": {"center": {"latitude": lat, "longitude": lng}, "radius": float(GOOGLE_MAX_RADIUS_M)}
+        }
+    return [_from_google(p, category, kind) for p in _google_post(GOOGLE_TEXT_URL, body)]
 
 
 # ---------- videos: YouTube + Instagram reel links ----------
@@ -280,6 +282,7 @@ def youtube_videos(place: str, city: str) -> list:
         {
             "place": place,
             "title": item["snippet"]["title"],
+            "text": item["snippet"].get("description", ""),
             "url": f"https://www.youtube.com/watch?v={item['id']['videoId']}",
             "source": "youtube",
         }
@@ -306,14 +309,15 @@ def tavily(query: str, max_results: int = 5, include_domains: list | None = None
 
 def reel_links(place: str, city: str) -> list:
     """Public Instagram links found by search. Links only: nothing is scraped or re-hosted."""
-    key = f"reels:{place}:{city}"
+    key = f"reels2:{place}:{city}"
     hit = quota.cached(key)
     if hit is None:
         results = tavily(
             f'"{core_name(place)}" {city}'.strip(), max_results=5, include_domains=["instagram.com"]
         )
         hit = [
-            {"place": place, "title": r.get("title", ""), "url": r["url"], "source": "instagram"}
+            {"place": place, "title": r.get("title", ""), "text": r.get("content", "")[:600],
+             "url": r["url"], "source": "instagram"}
             for r in results
             if is_about(place, f"{r.get('title', '')} {r.get('content', '')}")
         ]
@@ -434,27 +438,174 @@ def google_photo(photo_name: str, width: int = 1000) -> str | None:
     return r.json().get("photoUri")
 
 
-def describe(name: str, what: str | None, details: dict) -> str:
-    """Two sentences on what a place is, written only from Google's description and reviews."""
+class Described(BaseModel):
+    about: str  # what the place is
+    reviews_say: str  # what visitors report, kept apart so it is never read as fact
+
+
+def describe(name: str, what: str | None, details: dict) -> dict:
+    """What a place is, and separately what its reviewers say. Written only from Google's
+    description and reviews; either part is empty when there is nothing to base it on.
+    """
+    empty = {"about": "", "reviews_say": ""}
     if not details.get("summary") and not details.get("reviews"):
-        return ""
+        return empty
     facts = f"Name: {name}\nType: {what or 'unknown'}\nDescription: {details.get('summary') or 'none'}\n"
-    facts += "Visitor reviews:\n" + "\n".join(f"- {x}" for x in details.get("reviews", []))
+    facts += "Visitor reviews:\n" + ("\n".join(f"- {x}" for x in details.get("reviews", [])) or "none")
     client = openai.OpenAI(base_url=OPENROUTER_URL, api_key=os.getenv("OPENROUTER_API_KEY"))
-    completion = client.chat.completions.create(
+    completion = client.chat.completions.parse(
         model=os.getenv("OO_MODEL", "anthropic/claude-haiku-5.5"),
         messages=[
             {
                 "role": "system",
                 "content": (
-                    "In at most two short sentences, tell a traveller what this place is and what "
-                    "people do there. Use only the details given: do not add facts, prices, hours "
-                    "or history that are not in them. Plain text, no quotes, no superlatives. If "
-                    "the details are too thin to say anything useful, reply with exactly: NONE"
+                    "Describe a place for a traveller using only the details given. "
+                    "about: one short sentence saying what the place is, from its type and "
+                    "description. reviews_say: one short sentence summarising what the visitor "
+                    "reviews mention (what people do there, what they liked or disliked); it will "
+                    "be shown after the words 'Reviews say:', so do not start it with 'Reviewers' "
+                    "or 'Visitors'. Leave reviews_say empty if there are no reviews, and about "
+                    "empty if type and description say nothing. Never add facts, prices, hours or "
+                    "history that are not in the details. Plain text, no superlatives."
                 ),
             },
             {"role": "user", "content": facts},
         ],
+        response_format=Described,
     )
-    text = (completion.choices[0].message.content or "").strip()
-    return "" if text.upper().startswith("NONE") else text
+    parsed = completion.choices[0].message.parsed
+    return parsed.model_dump() if parsed else empty
+
+
+# ---------- more about one place ----------
+
+def google_more(google_id: str) -> dict:
+    """The practical details of one place: weekly hours, website, phone and review excerpts."""
+    if not quota.allow("google"):
+        return {}
+    r = requests.get(
+        GOOGLE_DETAILS_URL.format(id=google_id),
+        headers={"X-Goog-Api-Key": _google_key(),
+                 "X-Goog-FieldMask": "regularOpeningHours.weekdayDescriptions,websiteUri,"
+                                     "nationalPhoneNumber,reviews"},
+        timeout=TIMEOUT_S,
+    )
+    if not r.ok:
+        raise RuntimeError(f"Google Places {r.status_code}: {r.text[:300]}")
+    body = r.json()
+    quotes = [
+        {"text": x.get("text", {}).get("text", "")[:280], "rating": x.get("rating"),
+         "when": x.get("relativePublishTimeDescription")}
+        for x in body.get("reviews", []) if x.get("text", {}).get("text")
+    ]
+    return {
+        "hours": body.get("regularOpeningHours", {}).get("weekdayDescriptions", []),
+        "website": body.get("websiteUri"),
+        "phone": body.get("nationalPhoneNumber"),
+        "quotes": quotes[:2],
+    }
+
+
+# ---------- the words around a trip plan ----------
+
+class DayTheme(BaseModel):
+    day: int
+    theme: str
+
+
+class PlaceHook(BaseModel):
+    id: str
+    hook: str
+
+
+class TripStory(BaseModel):
+    intro: str
+    themes: list[DayTheme]
+    hooks: list[PlaceHook]
+    spotlight_line: str
+
+
+def trip_story(city: str, places: list, spotlight: dict | None) -> dict:
+    """The friendly wording around an already-verified plan: an opening line, a theme per
+    day, a short hook per place and a line for the highlighted place. The model chooses
+    words only; which places are in the plan was decided before it is called.
+    """
+    lines = [
+        f"- id={p['id']} | day {p['day']} | {p['name']} | {p.get('what') or 'place'} | "
+        f"{p.get('summary') or 'no description'}"
+        for p in places
+    ]
+    highlight = (
+        f"{spotlight['name']} | {spotlight.get('what') or 'place'} | {spotlight.get('summary') or 'no description'} "
+        f"| chosen as: {spotlight['label']}" if spotlight else "none"
+    )
+    client = openai.OpenAI(base_url=OPENROUTER_URL, api_key=os.getenv("OPENROUTER_API_KEY"))
+    completion = client.chat.completions.parse(
+        model=os.getenv("OO_MODEL", "anthropic/claude-haiku-5.5"),
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are Outofoffice, a travel buddy who plans trips for a friend: warm, a "
+                    "little playful, never salesy. You are given a finished, verified plan. Write "
+                    "only the words around it. intro: one sentence that makes them look forward "
+                    "to the trip. themes: for each day, three to five words capturing that day's "
+                    "feel from its places. hooks: for each place id, at most ten words on why to "
+                    "go, taken from its type and description. spotlight_line: one sentence on the "
+                    "highlighted place, or empty if there is none. Use only the details given: no "
+                    "prices, hours, history, dishes or claims that are not in them. If a place has "
+                    "no description, base its hook on its type alone. No emoji."
+                ),
+            },
+            {"role": "user", "content": f"Trip: {city}\nPlan:\n" + "\n".join(lines) + f"\nHighlight: {highlight}"},
+        ],
+        response_format=TripStory,
+    )
+    parsed = completion.choices[0].message.parsed
+    if parsed is None:
+        return {}
+    known = {p["id"] for p in places}
+    return {
+        "intro": parsed.intro,
+        "themes": {t.day: t.theme for t in parsed.themes},
+        "hooks": {h.id: h.hook for h in parsed.hooks if h.id in known},
+        "spotlight_line": parsed.spotlight_line,
+    }
+
+
+# ---------- is a link really about the place? ----------
+
+class Verdicts(BaseModel):
+    about_place: list[bool]
+
+
+def subject_check(place: str, what: str | None, links: list) -> list:
+    """Keep only links whose subject is the place itself. Naming the place is not enough:
+    a post about a villa or cafe "near" it mentions it too, and would mislead.
+    """
+    if not links:
+        return []
+    listing = "\n".join(f"{i + 1}. TITLE: {v.get('title', '')}\n   TEXT: {v.get('text', '')[:500]}" for i, v in enumerate(links))
+    client = openai.OpenAI(base_url=OPENROUTER_URL, api_key=os.getenv("OPENROUTER_API_KEY"))
+    completion = client.chat.completions.parse(
+        model=os.getenv("OO_MODEL", "anthropic/claude-haiku-5.5"),
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "For each numbered post, decide whether its main subject is the named place "
+                    "itself, so that someone watching it would see that place. Answer false when "
+                    "the place is only mentioned in passing, used as a landmark for something "
+                    "else nearby (a villa, hotel, village, cafe, road), listed among several "
+                    "places, or when you cannot tell. Return one boolean per post, in order."
+                ),
+            },
+            {"role": "user", "content": f"Place: {place} ({what or 'place'})\n\nPosts:\n{listing}"},
+        ],
+        response_format=Verdicts,
+    )
+    parsed = completion.choices[0].message.parsed
+    verdicts = parsed.about_place if parsed else []
+    if len(verdicts) != len(links):
+        return []  # an answer that does not line up cannot be trusted for any of them
+    return [v for v, ok in zip(links, verdicts) if ok]

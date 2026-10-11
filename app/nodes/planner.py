@@ -55,7 +55,35 @@ def day_conflict(items: list) -> dict | None:
     return None
 
 
+PER_DAY = 3
+PLACE_FIELDS = ("id", "name", "what", "summary", "rating", "rating_count", "source", "activity", "tags",
+                "google_id", "lat", "lng", "city", "district", "kind", "open_now", "outfit")
+
+
+def place_fields(c: dict) -> dict:
+    """What later steps need to describe a place, or to open its full card."""
+    return {k: c.get(k) for k in PLACE_FIELDS}
+
+
+def itinerary(ranked: list, days: int) -> list:
+    """Spread the best-ranked places over the days, keeping each day's places close together:
+    the best remaining place starts a day and its nearest neighbours fill it.
+    """
+    pool = list(ranked[: days * PER_DAY])
+    plan = []
+    for day in range(1, days + 1):
+        if not pool:
+            break
+        seed = pool.pop(0)
+        pool.sort(key=lambda c: distance_m(seed["lat"], seed["lng"], c["lat"], c["lng"]))
+        for c in [seed] + [pool.pop(0) for _ in range(min(PER_DAY - 1, len(pool)))]:
+            plan.append({"day": day, **place_fields(c)})
+    return plan
+
+
 def planner(state: RoveState) -> dict:
+    if state.get("trigger") == "trip":
+        return {"plan": itinerary(state.get("ranked", []), max(state.get("days_left", 1), 1)), "avoid": []}
     wants = state.get("wants", [])
     if not wants:
         return {"plan": [], "avoid": []}

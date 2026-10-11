@@ -1,4 +1,5 @@
 from app import tools
+from app.nodes.planner import place_fields
 from app.state import RoveState
 
 TRIGGER_REASON = {
@@ -20,6 +21,9 @@ def reasons(top: dict, state: RoveState) -> list:
     elif trigger in TRIGGER_REASON:
         why.append(TRIGGER_REASON[trigger])
 
+    if state.get("only"):
+        why.append("it is what you asked for")
+
     liked = state.get("taste", {}).get("tags", {})
     matches = sorted((t for t in top.get("tags", []) if liked.get(t, 0) > 0), key=lambda t: -liked[t])[:2]
     if matches:
@@ -38,8 +42,50 @@ def reasons(top: dict, state: RoveState) -> list:
     return why
 
 
+GEM_MIN_RATING, GEM_MIN_REVIEWS, GEM_MAX_REVIEWS = 4.5, 30, 1500
+
+
+def spotlight(verified: list) -> dict | None:
+    """One place worth calling out, chosen from the numbers and nothing else: a hidden gem
+    (rated highly by relatively few people) if there is one, otherwise the crowd favourite
+    (the place most people have reviewed).
+    """
+    rated = [c for c in verified if c.get("rating") and c.get("rating_count")]
+    if not rated:
+        return None
+    gems = [c for c in rated
+            if c["rating"] >= GEM_MIN_RATING and GEM_MIN_REVIEWS <= c["rating_count"] <= GEM_MAX_REVIEWS]
+    if gems:
+        pick, label = max(gems, key=lambda c: (c["rating"], c["rating_count"])), "Hidden gem"
+    else:
+        pick, label = max(rated, key=lambda c: c["rating_count"]), "Crowd favourite"
+    return {**place_fields(pick), "label": label}
+
+
+def trip(state: RoveState) -> dict:
+    ok = {c["id"] for c in state["verified"]}  # only places that passed the gate stay in the plan
+    days = [p for p in state.get("plan", []) if p["id"] in ok]
+    star = spotlight(state["verified"]) if days else None
+    if star:
+        star["videos"] = [
+            {"url": v["url"], "source": v.get("source", "video")}
+            for v in tools.video_search(star["name"], star.get("city") or state.get("city", ""), star.get("what"))
+        ]
+    return {
+        "nudge": {
+            "kind": "itinerary",
+            "city": state.get("city", ""),
+            "days": days,
+            "spotlight": star,
+            "story": tools.trip_story(state.get("city", ""), days, star) if days else {},
+        }
+    }
+
+
 def feed(state: RoveState) -> dict:
     """Turn what passed the gate into the one nudge for this run."""
+    if state.get("trigger") == "trip":
+        return trip(state)
     if state.get("wants"):
         return {
             "nudge": {
@@ -52,16 +98,18 @@ def feed(state: RoveState) -> dict:
     videos = top.get("videos")
     if videos is None:  # live mode: scout skipped the lookup, do it for this one venue
         # search with the venue's own town, not the trip's, so the links are about this place
-        videos = tools.video_search(top["name"], top.get("city") or state.get("city", ""))
+        videos = tools.video_search(top["name"], top.get("city") or state.get("city", ""), top.get("what"))
     about = tools.place_about(top)
     return {
         "nudge": {
             "id": top["id"],
             "name": top["name"],
             "kind": top["kind"],
+            "google_id": top.get("google_id"),
             "what": top.get("what"),
             "address": top.get("address"),
             "about": about["about"],
+            "reviews_say": about["reviews_say"],
             "photo": about["photo"],
             "photo_by": about["photo_by"],
             "city": top.get("city"),

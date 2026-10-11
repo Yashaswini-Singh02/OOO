@@ -41,7 +41,9 @@ def plan_queries(state: RoveState) -> ScoutQueries:
         f"Weather: {state.get('weather', 'unknown')}\n"
         f"Days left on the trip: {state.get('days_left', 'unknown')}\n"
         f"Tags the traveller likes most: {', '.join(liked) or 'none recorded'}\n"
-        f"Kinds of place the traveller does not want (never choose these): "
+        + ("Purpose: an itinerary for a visit of several days, so choose four varied categories "
+           "and the largest sensible radius.\n" if state.get("trigger") == "trip" else "")
+        + f"Kinds of place the traveller does not want (never choose these): "
         f"{', '.join(state.get('dislikes', [])) or 'none'}\n"
         f"Venues already rejected this run: "
         f"{', '.join(r['name'] for r in state.get('rejected', [])) or 'none'}"
@@ -100,9 +102,19 @@ def unwanted(c: dict, dislikes: list) -> bool:
     """
     if not dislikes:
         return False
+    return any(d.lower() in kinds_of(c) for d in dislikes)
+
+
+def kinds_of(c: dict) -> set:
     kinds = {t.lower() for t in c.get("tags", [])} | {t.lower() for t in c.get("types", [])}
-    kinds |= set((c.get("what") or "").lower().replace("_", " ").split())
-    return any(d.lower() in kinds for d in dislikes)
+    return kinds | set((c.get("what") or "").lower().replace("_", " ").split())
+
+
+def categories_for(kinds: list) -> list:
+    """Search categories that serve a request such as ["food"]: the category itself, or any
+    category whose tags include the word.
+    """
+    return [c for c, (_, tags, _, _) in CATEGORIES.items() if c in kinds or set(tags) & set(kinds)]
 
 
 def scout(state: RoveState) -> dict:
@@ -113,11 +125,20 @@ def scout(state: RoveState) -> dict:
     if state.get("trigger") == "speciality":
         return {"candidates": scout_shops(state), "replans": replans, "warnings": warnings}
 
-    try:
-        queries = plan_queries(state)
-    except (openai.OpenAIError, ValidationError, ValueError) as e:
-        warnings.append(f"scout used the default query: {type(e).__name__}: {e}")
-        queries = ScoutQueries(place_query=DEFAULT_QUERY, radius_m=DEFAULT_RADIUS_M)
+    only = state.get("only", [])
+    if only and categories_for(only):
+        # the traveller named the kind of place, so there is nothing for the model to decide
+        queries = ScoutQueries(
+            place_query=" ".join(only),
+            radius_m=state.get("max_radius_m", DEFAULT_RADIUS_M),
+            categories=categories_for(only),
+        )
+    else:
+        try:
+            queries = plan_queries(state)
+        except (openai.OpenAIError, ValidationError, ValueError) as e:
+            warnings.append(f"scout used the default query: {type(e).__name__}: {e}")
+            queries = ScoutQueries(place_query=DEFAULT_QUERY, radius_m=DEFAULT_RADIUS_M)
 
     dislikes = state.get("dislikes", [])
     queries.categories = [c for c in queries.categories if c not in dislikes] or [
@@ -130,10 +151,16 @@ def scout(state: RoveState) -> dict:
     if tools.use_fixtures():
         # live video lookups cost credits, so feed does one for the venue it nudges
         places = [{**p, "videos": tools.video_search(p["name"])} for p in places]
-    events = tools.event_search(
-        state.get("district", ""), *event_window(state), state.get("lat", 0.0), state.get("lng", 0.0)
-    )
+    if state.get("trigger") == "trip" and not tools.use_fixtures():
+        events = []  # the dates of a future visit are unknown, so today's events do not belong in it
+    else:
+        events = tools.event_search(
+            state.get("district", ""), *event_window(state), state.get("lat", 0.0), state.get("lng", 0.0)
+        )
     candidates = [localise(c, state) for c in places + events]
+    if state.get("trigger") == "trip":
+        # the visit is on another day, so whether a place is open this minute says nothing
+        candidates = [{**c, "open_now": None} for c in candidates]
 
     # A replan must not hand the gate something it already refused, and a nudge must
     # not repeat a venue the traveller was told about recently.
@@ -144,4 +171,6 @@ def scout(state: RoveState) -> dict:
         candidates = [c for c in candidates if c.get("distance_m", 0) <= radius]
         saved = set(state.get("saved", []))
         candidates = [c for c in candidates if c["id"] in saved or not unwanted(c, dislikes)]
+        if only:
+            candidates = [c for c in candidates if kinds_of(c) & {k.lower() for k in only}]
     return {"candidates": candidates, "replans": replans, "warnings": warnings}

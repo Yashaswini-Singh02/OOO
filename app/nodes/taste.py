@@ -1,3 +1,5 @@
+from math import log10
+
 from app.state import RoveState
 
 SAVED_BONUS = 1.0  # the traveller saved this spot themselves
@@ -21,6 +23,12 @@ def adjust(candidate: dict, state: RoveState) -> float:
     return bonus
 
 
+def quality(candidate: dict) -> float:
+    """A rating counts for more the more people gave it: 4.6 from 11,000 beats 4.9 from 12."""
+    rating = candidate.get("rating") or 0
+    return rating * log10((candidate.get("rating_count") or 0) + 10)
+
+
 def taste(state: RoveState) -> dict:
     tag_weights = state.get("taste", {}).get("tags", {})
     scored = [
@@ -28,4 +36,4 @@ def taste(state: RoveState) -> dict:
         for c in state.get("candidates", [])
     ]
     # ties go to the better-rated place; sorted() is stable, so remaining ties keep scout's order
-    return {"ranked": sorted(scored, key=lambda c: (c["score"], c.get("rating") or 0), reverse=True)}
+    return {"ranked": sorted(scored, key=lambda c: (c["score"], quality(c)), reverse=True)}

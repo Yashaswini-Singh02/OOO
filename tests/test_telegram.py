@@ -57,6 +57,7 @@ class TelegramUpdateTest(unittest.TestCase):
             "name": "Fort <Aguada>", "kind": "place", "what": "Historical landmark", "address": "Candolim",
             "distance_m": 6211, "hours_verified": True, "rating": 4.4, "rating_count": 51234,
             "why": ["people rate it 4.4 out of 5"], "about": "A 17th-century fort on the coast.",
+            "reviews_say": "the lighthouse view is worth the climb.",
             "source": "https://maps.google.com/?cid=1",
             "videos": [{"url": "https://youtu.be/a", "source": "youtube"},
                        {"url": "https://youtu.be/b", "source": "youtube"},
@@ -65,13 +66,19 @@ class TelegramUpdateTest(unittest.TestCase):
         out = self.tg.render(card)
         self.assertTrue(out["text"].startswith("<b>Fort &lt;Aguada&gt;</b>\n<i>Historical landmark</i>\n"))
         self.assertIn("A 17th-century fort on the coast.", out["text"])
-        self.assertIn("📍 6.2 km away  ·  🟢 Open now  ·  ⭐ 4.4 (51,234)", out["text"])
+        self.assertIn("\n📍 6.2 km away\n🟢 Open now\n⭐ 4.4 · 51,234 reviews\n", out["text"])  # one fact per line
         self.assertIn("💡 <b>Why this:</b> people rate it 4.4 out of 5.", out["text"])
         self.assertNotIn("Candolim", out["text"])  # no address: the Maps button covers it
         self.assertNotIn("Ruled out", out["text"])
         self.assertNotIn("http", out["text"])  # links are buttons, not raw URLs
-        links, feedback, more = out["reply_markup"]["inline_keyboard"]
-        self.assertEqual([b["text"] for b in links], ["🗺 Open in Maps", "▶️ Watch video", "🎬 See reel"])
+        links, feedback, more, info = out["reply_markup"]["inline_keyboard"]
+        self.assertEqual([b["text"] for b in info], ["ℹ️ Tell me more"])
+        self.assertIn("Want to know more about this place?", out["text"])
+        self.assertEqual([b["text"] for b in links], ["🗺 Maps", "▶️ Video", "🎬 Reel"])
+        both = messages.nudge_text({"name": "X", "kind": "place", "hours_verified": True, "source": "https://m",
+                                    "videos": [{"url": "https://instagram.com/reel/a", "source": "instagram"},
+                                               {"url": "https://instagram.com/acct", "source": "instagram"}]})
+        self.assertEqual([label for label, _ in both.links], ["🗺 Maps", "🎬 Reel"])  # one Instagram button
         self.assertEqual([b["text"] for b in feedback], ["❤️ Loved it", "👎 Not for me"])
         self.assertEqual([b["text"] for b in more], ["🔖 Save for later", "🔄 Suggest another"])
         # the plain-text form, for channels without formatting, carries the same facts
@@ -106,6 +113,31 @@ class TelegramUpdateTest(unittest.TestCase):
         with patch.object(self.tg, "call", side_effect=failing):
             self.tg.deliver(42, card)
         self.assertEqual([m for m, _ in sent], ["sendPhoto", "sendMessage"])  # the text still arrives
+
+    def test_a_trip_plan_reads_like_a_friend_wrote_it_and_offers_each_place(self):
+        from app import messages
+        place = lambda i, day, name: {"id": i, "day": day, "name": name, "what": "Castle", "rating": 4.5,
+                                      "rating_count": 9000, "source": f"https://maps/{i}"}
+        plan = messages.nudge_text({
+            "kind": "itinerary", "city": "Udaipur",
+            "days": [place("a", 1, "City Palace"), place("b", 2, "Monsoon Palace")],
+            "spotlight": {"id": "c", "name": "Ambrai Ghat", "label": "Hidden gem", "rating": 4.7, "rating_count": 800,
+                          "source": "https://maps/c", "videos": [{"url": "https://instagram.com/reel/x", "source": "instagram"}]},
+            "story": {"intro": "Two days of lakes and palaces.", "themes": {1: "Old city on foot"},
+                      "hooks": {"a": "The palace the city grew around."}, "spotlight_line": "Go at dusk."},
+        })
+        out = self.tg.render(plan)
+        self.assertIn("Two days of lakes and palaces.", out["text"])
+        self.assertIn("🗓 <b>Day 1 · Old city on foot</b>", out["text"])
+        self.assertIn("<i>The palace the city grew around.</i>", out["text"])
+        self.assertIn("✨ <b>Hidden gem:</b>", out["text"])
+        self.assertIn("Want the full story on any of these?", out["text"])
+        rows = out["reply_markup"]["inline_keyboard"]
+        self.assertEqual(rows[0][0]["text"], "🎬 Reel: Ambrai Ghat")
+        taps = [(b["text"], b["callback_data"]) for row in rows[1:] for b in row]
+        self.assertEqual(taps, [("City Palace", "about:0"), ("Monsoon Palace", "about:1"), ("Ambrai Ghat", "about:2")])
+        tap = self.tg.incoming({"callback_query": {"id": "q", "data": "about:2", "message": {"chat": CHAT}}})
+        self.assertEqual((tap["intent"].intent, tap["intent"].index), ("about", 2))
 
     def test_welcome_offers_a_share_location_button(self):
         from app import messages

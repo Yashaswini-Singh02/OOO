@@ -55,7 +55,9 @@ BUTTONS = {
     "rate:2": ("👎 Not for me", Intent(intent="rate", rating=2)),
     "save": ("🔖 Save for later", Intent(intent="save")),
     "more": ("🔄 Suggest another", Intent(intent="more")),
+    "info": ("ℹ️ Tell me more", Intent(intent="info")),
 }
+ABOUT = "about:"  # "about:3" opens the card of the fourth place in the last plan
 
 
 def incoming(update: dict) -> dict | None:
@@ -64,15 +66,22 @@ def incoming(update: dict) -> dict | None:
     """
     button = update.get("callback_query")
     if button:
-        if button.get("data") not in BUTTONS or "message" not in button:
+        data = button.get("data", "")
+        if "message" not in button:
+            return None
+        if data in BUTTONS:
+            label, intent = BUTTONS[data]
+        elif data.startswith(ABOUT) and data[len(ABOUT):].isdigit():
+            label, intent = "Tell me about it", Intent(intent="about", index=int(data[len(ABOUT):]))
+        else:
             return None
         return {
             "chat": button["message"]["chat"]["id"],
             "kind": "button",
             "callback_id": button["id"],
-            "intent": BUTTONS[button["data"]][1],
+            "intent": intent,
             "now": datetime.now().astimezone().isoformat(timespec="seconds"),
-            "text": BUTTONS[button["data"]][0],
+            "text": label,
             "lat": None,
             "lng": None,
         }
@@ -106,7 +115,9 @@ def render(reply: str) -> dict:
         rows.append([{"text": label, "url": url} for label, url in reply.links])
     if getattr(reply, "actions", False):
         actions = [{"text": label, "callback_data": data} for data, (label, _) in BUTTONS.items()]
-        rows += [actions[:2], actions[2:]]
+        rows += [actions[:2], actions[2:4], actions[4:]]
+    choices = [{"text": label[:28], "callback_data": f"{ABOUT}{key}"} for label, key in getattr(reply, "choices", [])]
+    rows += [choices[i:i + 2] for i in range(0, len(choices), 2)]
     if rows:
         params["reply_markup"] = {"inline_keyboard": rows}
     elif getattr(reply, "ask_location", False):

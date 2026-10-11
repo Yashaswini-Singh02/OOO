@@ -16,6 +16,7 @@ class RoveState(TypedDict, total=False):
     saved: list  # ids of spots the traveller saved
     recent: list  # ids nudged in the last 24 h, never repeated
     dislikes: list  # kinds of place the traveller said they do not want, e.g. ["park"]
+    only: list  # kinds asked for in this one request, e.g. ["food"]; not a lasting taste
 
     # --- profile, loaded from sqlite ---
     taste: dict  # {tags: {...}, ratings: [...]}

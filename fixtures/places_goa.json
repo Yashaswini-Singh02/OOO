@@ -121,5 +121,26 @@
     "open_now": true,
     "hours": "09:00-18:00",
     "distance_m": 6000
+  },
+  {
+    "id": "panaji-fish-thali",
+    "name": "Fixture Fish Thali House",
+    "kind": "place",
+    "district": "North Goa",
+    "lat": 15.4975,
+    "lng": 73.8275,
+    "tags": [
+      "restaurant",
+      "food",
+      "indoor"
+    ],
+    "activity": "food",
+    "indoor": true,
+    "cost_inr": 350,
+    "duration_h": 1,
+    "exists": true,
+    "open_now": true,
+    "hours": "08:00-22:30",
+    "distance_m": 450
   }
 ]
