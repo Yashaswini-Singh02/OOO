@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4NSZ9ACWEPRAA2QJTXYN89X",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 8,
+  "files_touched": [
+    "app/assistant.py",
+    "app/messages.py",
+    "app/nodes/feed.py",
+    "app/nodes/planner.py",
+    "app/nodes/scout.py",
+    "app/nodes/taste.py",
+    "app/providers.py",
+    "app/state.py",
+    "app/telegram.py",
+    "app/tools.py",
+    "fixtures/places_goa.json",
+    "tests/test_assistant.py",
+    "tests/test_scout.py",
+    "tests/test_telegram.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 556,
+    "cache_creation_tokens": 1160845,
+    "cache_read_tokens": 61767268,
+    "output_tokens": 305956,
+    "api_call_count": 203
+  }
+}
