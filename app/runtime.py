@@ -43,7 +43,8 @@ def on_location(
     # a saved spot the traveller was already nudged about should not wake the graph again
     saved = [s for s in store.load_saved(conn) if s["id"] not in recent]
 
-    trigger = triggers.fired(point, previous, saved)
+    history = store.load_locations(conn)  # includes the update just stored
+    trigger = triggers.fired(point, previous, saved, history, nudges)
     if trigger is None or throttled(nudges, now):
         return None
 
@@ -62,5 +63,5 @@ def on_location(
     )
     nudge = result.get("nudge")
     if nudge:
-        store.add_nudge(conn, nudge["id"], point["now"])
+        store.add_nudge(conn, nudge["id"], point["now"], trigger)
     return nudge

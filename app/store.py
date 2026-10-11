@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS saved (
 CREATE TABLE IF NOT EXISTS nudges (
     id       INTEGER PRIMARY KEY AUTOINCREMENT,
     venue_id TEXT NOT NULL,
-    at       TEXT NOT NULL
+    at       TEXT NOT NULL,
+    trigger  TEXT
 );
 CREATE TABLE IF NOT EXISTS locations (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,6 +64,9 @@ def connect(path: str = DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    # databases created before nudges recorded their trigger
+    if "trigger" not in {r["name"] for r in conn.execute("PRAGMA table_info(nudges)")}:
+        conn.execute("ALTER TABLE nudges ADD COLUMN trigger TEXT")
     return conn
 
 
@@ -159,13 +163,13 @@ def load_saved(conn: sqlite3.Connection) -> list:
     return [dict(r) for r in conn.execute("SELECT id, name, lat, lng, hours FROM saved ORDER BY id")]
 
 
-def add_nudge(conn: sqlite3.Connection, venue_id: str, at: str) -> None:
-    conn.execute("INSERT INTO nudges (venue_id, at) VALUES (?, ?)", (venue_id, at))
+def add_nudge(conn: sqlite3.Connection, venue_id: str, at: str, trigger: str | None = None) -> None:
+    conn.execute("INSERT INTO nudges (venue_id, at, trigger) VALUES (?, ?, ?)", (venue_id, at, trigger))
     conn.commit()
 
 
 def load_nudges(conn: sqlite3.Connection) -> list:
-    return [dict(r) for r in conn.execute("SELECT venue_id, at FROM nudges ORDER BY id")]
+    return [dict(r) for r in conn.execute("SELECT venue_id, at, trigger FROM nudges ORDER BY id")]
 
 
 def add_location(conn: sqlite3.Connection, at: str, lat: float, lng: float, weather: str) -> None:
@@ -173,6 +177,14 @@ def add_location(conn: sqlite3.Connection, at: str, lat: float, lng: float, weat
         "INSERT INTO locations (at, lat, lng, weather) VALUES (?, ?, ?, ?)", (at, lat, lng, weather)
     )
     conn.commit()
+
+
+def load_locations(conn: sqlite3.Connection, limit: int = 2000) -> list:
+    """The most recent location updates, oldest first."""
+    rows = conn.execute(
+        "SELECT at, lat, lng, weather FROM locations ORDER BY id DESC LIMIT ?", (limit,)
+    ).fetchall()
+    return [dict(r) for r in reversed(rows)]
 
 
 def last_location(conn: sqlite3.Connection) -> dict | None:
