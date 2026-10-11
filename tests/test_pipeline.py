@@ -19,7 +19,7 @@ CONTEXT = {
     "budget": {"alloc": {}, "spent": {}},
     "wardrobe": [],
 }
-QUERIES = ScoutQueries(place_query="sunset viewpoint", radius_m=30000)
+QUERIES = ScoutQueries(place_query="sunset viewpoint", radius_m=70000)
 
 
 def run(scenario: str, context: dict = CONTEXT) -> tuple[dict, int]:

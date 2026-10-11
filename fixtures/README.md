@@ -13,3 +13,6 @@ Files are named `<kind>_<scenario>.json` and `OO_SCENARIO` picks the scenario:
   whose reel places it about 55 km from where it is). "Hidden Lagoon Viewpoint" is invented.
 
 `distance_m` is measured from the simulated start point in Fontainhas, Panaji.
+
+`route_goa.json` is the simulated walk: 15 timestamped points from Panaji to Arpora, three
+saved spots, and a rain shower at 13:10. The route and its times are invented for the demo.

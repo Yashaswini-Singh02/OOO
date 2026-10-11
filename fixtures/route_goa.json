@@ -1,0 +1,26 @@
+{
+  "profile": "goa_2day",
+  "trip": {"city": "Goa", "district": "North Goa", "days_left": 2},
+  "saved": [
+    {"id": "fontainhas", "name": "Fontainhas Latin Quarter", "lat": 15.4989, "lng": 73.8313},
+    {"id": "chapora-fort", "name": "Chapora Fort", "lat": 15.606, "lng": 73.7364},
+    {"id": "arpora-night-market", "name": "Saturday Night Market, Arpora", "lat": 15.5667, "lng": 73.7667, "hours": "18:00-23:59"}
+  ],
+  "points": [
+    {"label": "Fontainhas, Panaji", "lat": 15.4989, "lng": 73.8313, "now": "2026-10-10T09:00:00+05:30", "weather": "clear"},
+    {"label": "Panaji church square", "lat": 15.5005, "lng": 73.829, "now": "2026-10-10T09:20:00+05:30", "weather": "clear"},
+    {"label": "Miramar", "lat": 15.4827, "lng": 73.8073, "now": "2026-10-10T09:45:00+05:30", "weather": "clear"},
+    {"label": "Dona Paula", "lat": 15.453, "lng": 73.804, "now": "2026-10-10T10:30:00+05:30", "weather": "clear"},
+    {"label": "Porvorim", "lat": 15.533, "lng": 73.823, "now": "2026-10-10T12:00:00+05:30", "weather": "clear"},
+    {"label": "Pilerne", "lat": 15.533, "lng": 73.797, "now": "2026-10-10T12:40:00+05:30", "weather": "clear"},
+    {"label": "Saligao", "lat": 15.55, "lng": 73.785, "now": "2026-10-10T13:10:00+05:30", "weather": "rain"},
+    {"label": "Saligao", "lat": 15.551, "lng": 73.784, "now": "2026-10-10T13:40:00+05:30", "weather": "rain"},
+    {"label": "Calangute", "lat": 15.544, "lng": 73.755, "now": "2026-10-10T14:30:00+05:30", "weather": "clear"},
+    {"label": "Baga", "lat": 15.5553, "lng": 73.7517, "now": "2026-10-10T15:30:00+05:30", "weather": "clear"},
+    {"label": "Anjuna", "lat": 15.574, "lng": 73.74, "now": "2026-10-10T16:30:00+05:30", "weather": "clear"},
+    {"label": "Vagator", "lat": 15.599, "lng": 73.744, "now": "2026-10-10T17:10:00+05:30", "weather": "clear"},
+    {"label": "Chapora Fort", "lat": 15.606, "lng": 73.7364, "now": "2026-10-10T17:35:00+05:30", "weather": "clear"},
+    {"label": "Arpora", "lat": 15.566, "lng": 73.765, "now": "2026-10-10T18:10:00+05:30", "weather": "clear"},
+    {"label": "Arpora night market", "lat": 15.5667, "lng": 73.7667, "now": "2026-10-10T18:35:00+05:30", "weather": "clear"}
+  ]
+}

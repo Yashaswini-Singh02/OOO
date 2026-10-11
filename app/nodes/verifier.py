@@ -12,7 +12,7 @@ def refusal(c: dict) -> str | None:
     """Why this candidate must not reach the feed, or None if it may."""
     if not c.get("exists"):
         return "venue not found"
-    if not c.get("open_now"):
+    if c.get("open_now") is False:  # None means hours unknown, which is not a refusal
         return "closed right now"
     for video in c.get("videos", []):
         off_by = distance_m(c["lat"], c["lng"], video["claimed_lat"], video["claimed_lng"])

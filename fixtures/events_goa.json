@@ -6,14 +6,20 @@
     "district": "North Goa",
     "lat": 15.5667,
     "lng": 73.7667,
-    "tags": ["market", "music", "food", "night"],
+    "tags": [
+      "market",
+      "music",
+      "food",
+      "night"
+    ],
     "activity": "market",
     "cost_inr": 500,
     "duration_h": 3,
     "starts": "2026-10-10T18:00:00+05:30",
     "exists": true,
     "open_now": false,
-    "distance_m": 14000
+    "distance_m": 14000,
+    "hours": "18:00-23:59"
   },
   {
     "id": "fontainhas-heritage-walk",
@@ -22,7 +28,11 @@
     "district": "North Goa",
     "lat": 15.4989,
     "lng": 73.8313,
-    "tags": ["heritage", "walk", "guided"],
+    "tags": [
+      "heritage",
+      "walk",
+      "guided"
+    ],
     "activity": "walk",
     "cost_inr": 700,
     "duration_h": 2,

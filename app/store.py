@@ -1,4 +1,5 @@
-"""Domain store: plain SQLite with three tables (taste, wardrobe, spend).
+"""Domain store: plain SQLite. Profile tables (taste, wardrobe, spend) plus what the
+runtime remembers between location updates (saved spots, nudges sent, locations seen).
 
 Separate from LangGraph's own checkpointer. Run `python -m app.store --selftest`
 to exercise it against a throwaway database.
@@ -35,6 +36,25 @@ CREATE TABLE IF NOT EXISTS spend (
     amount   REAL NOT NULL,
     note     TEXT,
     at       TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS saved (
+    id    TEXT PRIMARY KEY,
+    name  TEXT NOT NULL,
+    lat   REAL NOT NULL,
+    lng   REAL NOT NULL,
+    hours TEXT
+);
+CREATE TABLE IF NOT EXISTS nudges (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    venue_id TEXT NOT NULL,
+    at       TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS locations (
+    id      INTEGER PRIMARY KEY AUTOINCREMENT,
+    at      TEXT NOT NULL,
+    lat     REAL NOT NULL,
+    lng     REAL NOT NULL,
+    weather TEXT
 );
 """
 
@@ -122,6 +142,42 @@ def load_budget(conn: sqlite3.Connection) -> dict:
     for r in rows:
         budget[r["kind"]][r["category"]] = r["total"]
     return budget
+
+
+# --- runtime memory: saved spots, nudges sent, locations seen ---
+# Timestamps are ISO 8601 strings supplied by the caller, so simulated time works too.
+
+def save_spots(conn: sqlite3.Connection, spots: list) -> None:
+    conn.executemany(
+        "INSERT OR REPLACE INTO saved (id, name, lat, lng, hours) VALUES (?, ?, ?, ?, ?)",
+        [(s["id"], s["name"], s["lat"], s["lng"], s.get("hours")) for s in spots],
+    )
+    conn.commit()
+
+
+def load_saved(conn: sqlite3.Connection) -> list:
+    return [dict(r) for r in conn.execute("SELECT id, name, lat, lng, hours FROM saved ORDER BY id")]
+
+
+def add_nudge(conn: sqlite3.Connection, venue_id: str, at: str) -> None:
+    conn.execute("INSERT INTO nudges (venue_id, at) VALUES (?, ?)", (venue_id, at))
+    conn.commit()
+
+
+def load_nudges(conn: sqlite3.Connection) -> list:
+    return [dict(r) for r in conn.execute("SELECT venue_id, at FROM nudges ORDER BY id")]
+
+
+def add_location(conn: sqlite3.Connection, at: str, lat: float, lng: float, weather: str) -> None:
+    conn.execute(
+        "INSERT INTO locations (at, lat, lng, weather) VALUES (?, ?, ?, ?)", (at, lat, lng, weather)
+    )
+    conn.commit()
+
+
+def last_location(conn: sqlite3.Connection) -> dict | None:
+    row = conn.execute("SELECT at, lat, lng, weather FROM locations ORDER BY id DESC LIMIT 1").fetchone()
+    return dict(row) if row else None
 
 
 def load_profile(conn: sqlite3.Connection) -> dict:

@@ -19,5 +19,8 @@ def feed(state: RoveState) -> dict:
             "kind": top["kind"],
             "outfit": top.get("outfit"),
             "cost_inr": top.get("cost_inr", 0),
+            "distance_m": top.get("distance_m"),
+            "hours_verified": top.get("open_now") is True,
+            "trigger": state.get("trigger"),
         }
     }

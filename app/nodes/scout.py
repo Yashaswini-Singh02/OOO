@@ -5,6 +5,9 @@ import openai
 from pydantic import BaseModel, ValidationError
 
 from app import tools
+from app.geo import distance_m
+from app.hours import is_open
+from app.providers import CATEGORIES, DEFAULT_CATEGORIES
 from app.state import RoveState
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1"
@@ -16,14 +19,16 @@ DEFAULT_RADIUS_M = 3000
 SYSTEM = (
     "You plan searches for a travel companion that suggests one nearby thing to do. "
     "Write a short place-search query (a few words, no city name) suited to the "
-    "context, and a search radius in metres between 1000 and 60000. If venues were "
-    "already rejected, search for something different from them."
+    "context, a search radius in metres between 1000 and 60000, and one to four place "
+    f"categories chosen only from: {', '.join(CATEGORIES)}. In rain prefer indoor "
+    "categories. If venues were already rejected, search for something different from them."
 )
 
 
 class ScoutQueries(BaseModel):
     place_query: str
     radius_m: int
+    categories: list[str] = DEFAULT_CATEGORIES
 
 
 def plan_queries(state: RoveState) -> ScoutQueries:
@@ -60,6 +65,16 @@ def event_window(state: RoveState) -> tuple[str, str]:
     return start.date().isoformat(), end.date().isoformat()
 
 
+def localise(c: dict, state: RoveState) -> dict:
+    """Recompute what depends on where and when the traveller is: distance and open-now."""
+    out = dict(c)
+    if "lat" in state and "lat" in c:
+        out["distance_m"] = round(distance_m(state["lat"], state["lng"], c["lat"], c["lng"]))
+    if c.get("hours") and state.get("now"):
+        out["open_now"] = is_open(c["hours"], datetime.fromisoformat(state["now"]))
+    return out
+
+
 def scout(state: RoveState) -> dict:
     warnings = list(state.get("warnings", []))
     # Loop guard: scout already ran if candidates exist, so this entry is a replan.
@@ -71,13 +86,19 @@ def scout(state: RoveState) -> dict:
         warnings.append(f"scout used the default query: {type(e).__name__}: {e}")
         queries = ScoutQueries(place_query=DEFAULT_QUERY, radius_m=DEFAULT_RADIUS_M)
 
+    radius = min(queries.radius_m, state.get("max_radius_m", queries.radius_m))
     places = tools.place_search(
-        queries.place_query, state.get("lat", 0.0), state.get("lng", 0.0), queries.radius_m
+        queries.place_query, state.get("lat", 0.0), state.get("lng", 0.0), radius, queries.categories
     )
     places = [{**p, "videos": tools.video_search(p["name"])} for p in places]
     events = tools.event_search(state.get("district", ""), *event_window(state))
+    candidates = [localise(c, state) for c in places + events]
 
-    # A replan must not hand the gate something it already refused.
-    refused = {r["id"] for r in state.get("rejected", [])}
-    candidates = [c for c in places + events if c["id"] not in refused]
+    # A replan must not hand the gate something it already refused, and a nudge must
+    # not repeat a venue the traveller was told about recently.
+    skip = {r["id"] for r in state.get("rejected", [])} | set(state.get("recent", []))
+    candidates = [c for c in candidates if c["id"] not in skip]
+    if not state.get("wants"):
+        # things the traveller asked for by name are worth a long trip; the rest must be near
+        candidates = [c for c in candidates if c.get("distance_m", 0) <= radius]
     return {"candidates": candidates, "replans": replans, "warnings": warnings}

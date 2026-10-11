@@ -14,7 +14,7 @@ CONTEXT = {
     "now": "2026-10-10T09:00:00+05:30",
     "days_left": 2,
 }
-QUERIES = ScoutQueries(place_query="sunset viewpoint", radius_m=30000)
+QUERIES = ScoutQueries(place_query="sunset viewpoint", radius_m=70000)
 
 
 class ScoutTest(unittest.TestCase):
@@ -23,7 +23,7 @@ class ScoutTest(unittest.TestCase):
             out = scout({**CONTEXT, "replans": 0})
         self.assertEqual(set(out), {"candidates", "replans", "warnings"})
         kinds = [c["kind"] for c in out["candidates"]]
-        self.assertEqual(kinds.count("place"), 5)
+        self.assertEqual(kinds.count("place"), 6)
         self.assertEqual(kinds.count("event"), 2)
         self.assertEqual(out["replans"], 0)
         self.assertEqual(out["warnings"], [])
@@ -38,7 +38,7 @@ class ScoutTest(unittest.TestCase):
     def test_llm_failure_falls_back_and_says_so(self):
         with patch.object(scout_module, "plan_queries", side_effect=openai.OpenAIError("no key")):
             out = scout({**CONTEXT, "replans": 0})
-        self.assertEqual(len(out["candidates"]), 7)
+        self.assertEqual(len(out["candidates"]), 2)  # default radius is 3 km
         self.assertEqual(out["warnings"], ["scout used the default query: OpenAIError: no key"])
 
 

@@ -11,6 +11,10 @@ class RoveState(TypedDict, total=False):
     days_left: int
     weather: str
     wants: list  # activities the traveller asked for, e.g. ["trek", "sunset"]
+    trigger: str  # why this run started: near_saved_spot, place_just_opened, rain_starting
+    max_radius_m: int  # how far the trigger lets scout look
+    saved: list  # ids of spots the traveller saved
+    recent: list  # ids nudged in the last 24 h, never repeated
 
     # --- profile, loaded from sqlite ---
     taste: dict  # {tags: {...}, ratings: [...]}

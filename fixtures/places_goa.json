@@ -100,5 +100,26 @@
     "exists": true,
     "open_now": true,
     "distance_m": 58000
+  },
+  {
+    "id": "museum-of-goa",
+    "name": "Museum of Goa",
+    "kind": "place",
+    "district": "North Goa",
+    "lat": 15.534,
+    "lng": 73.79,
+    "tags": [
+      "museum",
+      "art",
+      "indoor"
+    ],
+    "activity": "indoor",
+    "indoor": true,
+    "cost_inr": 300,
+    "duration_h": 2,
+    "exists": true,
+    "open_now": true,
+    "hours": "09:00-18:00",
+    "distance_m": 6000
   }
 ]
