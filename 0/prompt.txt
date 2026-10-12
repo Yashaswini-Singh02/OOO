@@ -1,0 +1,45 @@
+pushed, now start section 11. Yes the telegram images we will attach when we have completed every other thing in our plate. At the time of record we will go through and record and then click ss as well
+
+---
+
+can you gove me a command which i can run from terminal , I dont want to add in the shell
+
+---
+
+done
+
+---
+
+okay but is the buisness plan good or should we improve something also these are the real numbers from the open router dashboard [Image #51] [Image #52]/Users/yashaswini/Downloads/openrouter_activity_2026-10-12.csv
+
+---
+
+real fixed monthly spend and starting cash, where do it get this from
+
+---
+
+$50 and $500 of mine and neatlogs subscription. 50 dollar
+
+---
+
+how can we improve the lookup cost can we do that?
+
+---
+
+scenario only, add it now
+
+---
+
+[Image #53] this the one plan'
+
+---
+
+[Image #54]
+
+---
+
+[Image #55] this was below the main scenario's table and this  [Image #56] this is the cached one [Image #57]
+
+---
+
+should we mention about the cached scenarios in code docs as well or is it fine?
