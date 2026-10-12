@@ -54,6 +54,17 @@ class ScoutTest(unittest.TestCase):
             scout({**CONTEXT, "replans": 0, "taste": {"tags": {"sunset": 0.8, "museum": -1.0}}})
         self.assertEqual(seen, [["viewpoint", "attraction"]])
 
+    def test_what_the_traveller_asked_to_do_is_searched_for_even_if_the_model_looks_elsewhere(self):
+        seen = []
+        picked = ScoutQueries(place_query="seafood dinner", radius_m=10000, categories=["restaurant", "market"])
+        with patch.object(scout_module, "plan_queries", return_value=picked), \
+                patch.object(scout_module.tools, "place_search",
+                             side_effect=lambda q, lat, lng, r, categories: seen.append(categories) or []):
+            scout({**CONTEXT, "replans": 0, "wants": ["trek", "sunset"]})
+        # a trek needs the waterfall search and a sunset the viewpoint search, ahead of the model's own picks
+        self.assertEqual(seen[0][:2], ["viewpoint", "waterfall"])
+        self.assertIn("restaurant", seen[0])
+
     def test_a_plain_attraction_is_not_tagged_as_a_sunset_spot(self):
         from app import providers
         temple = {"displayName": {"text": "Jagdish Temple"}, "types": ["hindu_temple", "tourist_attraction"]}

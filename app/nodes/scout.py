@@ -42,7 +42,9 @@ def plan_queries(state: RoveState) -> ScoutQueries:
         f"District: {state.get('district', 'unknown')}\n"
         f"Weather: {state.get('weather', 'unknown')}\n"
         f"Local time: {(state.get('now') or '')[11:16] or 'unknown'}\n"
-        f"Days left on the trip: {state.get('days_left', 'unknown')}\n"
+        + (f"The traveller asked to fit these into their remaining days: {', '.join(state['wants'])}. "
+           "Search for those, whatever the time is now.\n" if state.get("wants") else "")
+        + f"Days left on the trip: {state.get('days_left', 'unknown')}\n"
         f"Tags the traveller likes most: {', '.join(liked) or 'none recorded'}\n"
         f"What the traveller said about themselves: {'; '.join(state.get('notes', [])) or 'nothing'}\n"
         + ("Purpose: an itinerary for a visit of several days, so choose four varied categories "
@@ -219,10 +221,9 @@ def scout(state: RoveState) -> dict:
             queries = ScoutQueries(place_query=DEFAULT_QUERY, radius_m=DEFAULT_RADIUS_M)
 
     dislikes = state.get("dislikes", [])
-    # what the traveller likes is always searched for, whatever the model chose
-    queries.categories = liked_categories(state) + [
-        c for c in queries.categories if c not in liked_categories(state)
-    ]
+    # what the traveller asked for, then what they like, is always searched for, whatever the model chose
+    must = list(dict.fromkeys(categories_for(state.get("wants", [])) + liked_categories(state)))
+    queries.categories = must + [c for c in queries.categories if c not in must]
     queries.categories = [c for c in queries.categories if c not in dislikes] or [
         c for c in DEFAULT_CATEGORIES if c not in dislikes
     ]
