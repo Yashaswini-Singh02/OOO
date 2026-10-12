@@ -289,13 +289,32 @@ def details_text(name: str, details: dict) -> Reply:
     return Reply("\n".join(plain), title=f"More on {name}", html="\n".join(rich))
 
 
+def outfit_label(outfit_id: str) -> str:
+    """A packed outfit as the traveller would call it. Ids are the name with hyphens, cut at
+    40 characters, so the last word of a long one may be a fragment and is dropped.
+    """
+    words = [w for w in outfit_id.split("-") if w]
+    if words and words[-1].isdigit():  # "-2" marks a second outfit with the same name
+        words = words[:-1]
+    if len("-".join(words)) >= 39 and len(words) > 1:
+        words = words[:-1]
+    while len(words) > 1 and words[-1] in {"with", "and", "of", "in", "to", "a", "the"}:
+        words = words[:-1]  # a name cut short should not end on a joining word
+    return " ".join(words).split(" with ")[0] or outfit_id
+
+
 def _plan(nudge: dict) -> Reply:
-    plain = [f"Day {p['day']}: {p['name']} at {p['at']}, wear your {p['outfit']}." for p in nudge["days"]]
+    plain = [
+        f"Day {p['day']}: {p['name']} at {p['at']}"
+        + (f", wear your {outfit_label(p['outfit'])}." if p.get("outfit") else ".")
+        for p in nudge["days"]
+    ]
     plain += [f"Avoid: {a}" for a in nudge.get("avoid", [])]
     rich = ["<b>Here's how to fit it in</b>", ""]
     for p in nudge["days"]:
         rich.append(f"🗓 <b>Day {p['day']}</b>  ·  {escape(p['name'])}")
-        rich.append(f"      🕒 {escape(str(p['at']))}  ·  👕 {escape(str(p['outfit']))}")
+        rich.append(f"      🕒 {escape(str(p['at']))}"
+                    + (f"  ·  👕 {escape(outfit_label(p['outfit']))}" if p.get("outfit") else ""))
     for a in nudge.get("avoid", []):
         rich += ["", f"⚠️ <b>Avoid:</b> {escape(a)}"]
     return Reply("\n".join(plain), title="Here's how to fit it in", html="\n".join(rich))
@@ -348,7 +367,7 @@ def nudge_text(nudge: dict) -> Reply:
     if why and not say:
         plain.append(why)
     if nudge.get("outfit"):
-        plain.append(f"Wear your {nudge['outfit']}.")
+        plain.append(f"Wear your {outfit_label(nudge['outfit'])}.")
 
     # formatted: bold title, italic type, description, then the facts and the reason.
     # No address here: the Maps button already takes the traveller to it.
@@ -365,7 +384,7 @@ def nudge_text(nudge: dict) -> Reply:
     if why and not say:
         rich += ["", f"💡 {escape(why)}"]
     if nudge.get("outfit"):
-        rich.append(f"👕 Wear your {escape(nudge['outfit'])}.")
+        rich.append(f"👕 Wear your {escape(outfit_label(nudge['outfit']))}.")
     ask = "Want to know more about this place?"
     plain.append(ask)
     rich += ["", escape(ask)]

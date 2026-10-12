@@ -61,7 +61,7 @@ class AssistantTest(unittest.TestCase):
         store.save_taste(self.conn, {"tags": {"sunset": 0.8, "photography": 0.6, "trek": 0.5}, "ratings": []})
         self.say(**FONTAINHAS)
         reply = self.say(intent=wants)
-        self.assertIn("Day 1: Dudhsagar Falls at 07:00, wear your trek-tee.", reply)
+        self.assertIn("Day 1: Dudhsagar Falls at 07:00, wear your trek tee.", reply)
         self.assertIn("Day 2:", reply)
         self.assertIn("Avoid:", reply)
 

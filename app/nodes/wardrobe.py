@@ -12,6 +12,17 @@ PREFERRED = {
 }
 
 
+WORSHIP = ("temple", "mandir", "mosque", "masjid", "church", "gurdwara", "gurudwara", "dargah", "shrine",
+           "synagogue", "monastery", "place_of_worship")
+
+
+def is_worship(place: dict) -> bool:
+    """A temple, mosque, church or other place of worship, going by its type and name."""
+    text = " ".join([place.get("name") or "", place.get("what") or "", *place.get("types", []),
+                     *place.get("tags", [])]).lower()
+    return any(w in text for w in WORSHIP)
+
+
 def pick_outfit(activity: str, wardrobe: list) -> dict | None:
     suitable = [w for w in wardrobe if w["fabric"] not in UNSUITABLE.get(activity, set())]
     for w in suitable:
@@ -33,5 +44,6 @@ def wardrobe(state: RoveState) -> dict:
         if outfit is None:
             warnings.append(f"nothing packed suits {c['name']} ({c.get('activity')})")
             continue
-        kept.append({**c, "outfit": outfit["id"]})
+        # what to wear to a temple is a matter of covered shoulders and knees, not of style
+        kept.append({**c, "outfit": None if is_worship(c) else outfit["id"]})
     return {"ranked": kept, "warnings": warnings}

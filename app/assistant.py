@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from app import budget_plan, messages, runtime, store, tools
 from app import providers
+from app.nodes.wardrobe import is_worship
 from app.providers import CATEGORIES, FABRICS
 
 USERS_DIR = Path(__file__).resolve().parent.parent / "data" / "users"
@@ -351,6 +352,7 @@ def _plan_trip(conn: sqlite3.Connection, city: str, days: int, now: str, run: Ca
 BACKDROPS = 20  # how many verified places the stylist may choose between
 REEL_PLACES = 2  # places whose reels are looked up for one reply: each new place costs a search
 PLAN_OFFER = "Want me to plan the rest of your {days} too? Tell me what you're into, or just say yes."
+MOOD = "Happy to. What are you in the mood for: something to eat, a cafe, a bit of shopping, or a place to see?"
 
 
 def _backdrops(conn: sqlite3.Connection, now: str, run: Callable[[dict], dict]) -> list:
@@ -376,6 +378,8 @@ def _wear(conn: sqlite3.Connection, now: str, run: Callable[[dict], dict], notif
     outfits, plan = store.get_kv(conn, "outfits", []), store.get_kv(conn, "last_plan", [])
     trip = store.get_kv(conn, "trip", DEFAULT_TRIP)
     places = plan or _backdrops(conn, now, run)
+    # an outfit is never styled against a temple or other place of worship
+    places = [p for p in places if not is_worship(p)]
     if not places and not trip.get("city") and not store.last_location(conn):
         return "Where are you headed, and for how many days? I'll find the spots to wear it."
     pairs = tools.style_match(outfits, places)
@@ -703,7 +707,8 @@ def _act(
         only = [k for k in intent.likes if k in KINDS]
         skip = [k for k in intent.dislikes if k in KINDS]
         if not only:
-            return "Tell me what kind of place you want, e.g. somewhere to eat, a cafe, a museum or a beach."
+            _ask(conn, MOOD)  # so a short answer such as "eat" is read as the kind of place
+            return MOOD
         context = _context(conn, now)
         notify(f"On it. Looking for {' or '.join(only)} near you...")
         return _run_and_reply(
