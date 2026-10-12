@@ -1,0 +1,105 @@
+okay so till now what we have, the last i remeber we were on sec 10, Also you can refer this https://claude.ai/artifact/DTVQhMuPDenEq4kdF2VT6Q build order. The last we were stuck on how to show the traces evidence so asked my mentor and I got this hey, for neatlogs proof, judges accept trace links or screenshots. I'd do both: link 2-3 key traces, add screenshots in your README and demo in case links need a login, and include a before and after pair with the numbers compared. a dashboard link alone isn't enough, point them to specific runs. he replied with this and there were some detections taht supposed to be run see the previous conversation you will get full refrence
+
+---
+
+[Image #34] is this works?
+
+---
+
+what does detections do and what do you mean by repland?
+
+---
+
+what does detections do and what do you mean by replans?
+
+---
+
+[Image #35] how to create a detection then?
+
+---
+
+[Image #36]
+
+---
+
+[Image #37]
+
+---
+
+[Image #38]
+
+---
+
+[Image #39]
+
+---
+
+[Image #40]
+
+---
+
+[Image #41] [Image #42]
+
+---
+
+[Image #43] this is also one thing which came after backfill.
+
+---
+
+[Image #44] nothing returned on second detection
+
+---
+
+what is PII
+
+---
+
+"error": "AI service error", while editing i got this issue so this is from neatlogs side right and also that preview failed but after the backfill generation everything came back
+
+---
+
+AI service error" [Image #45]
+
+---
+
+okay draft the body for the second error as well so that i can send them keep it short and to th epoint.
+
+---
+
+okay remeber everything the feedback and error from their side we will give them as feedback now tell me the other two detections so that we can close this and move fprward.
+
+---
+
+v
+
+---
+
+[Image #46]
+
+---
+
+v
+
+---
+
+[Image #47]
+
+---
+
+[Image #48]
+
+---
+
+[Image #49] got this
+
+---
+
+[Image #50] for  PII got this
+
+---
+
+1. yes 2.no it didnt
+
+---
+
+no i think i can only seee all the neatlog ss not the telegram chat ss
