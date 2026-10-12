@@ -5,7 +5,8 @@ packed, then nudges you when something nearby is worth it. Every place it sugges
 first (real, open now, and where the reel claims), and if nothing passes, it stays quiet.
 
 Built for neatHack 2026 (Oct 10–12) with LangGraph, neatlogs, Entire and cfo.ai. The build log
-is in [`hackathon.md`](hackathon.md).
+is in [`hackathon.md`](hackathon.md), and the business plan, modelled in cfo.ai from the measured
+cost per run, is in [`business-plan.md`](business-plan.md).
 
 ## How it works
 
@@ -65,13 +66,14 @@ Same input both times: `OO_SCENARIO=closed python -m app.graph`, run 5 times bef
 | Trace latency | 5.4 s | 2.8 s | 48% faster |
 | Model calls | 3 | 1 | |
 | Tokens | 1,956 (1,799 in, 157 out) | 678 (626 in, 52 out) | 65% fewer |
+| Model cost (billed by OpenRouter) | $0.000256 | $0.000088 | 66% lower |
 | Search radius per pass | 15, 15, 15 km | 15, 37.5, 60 km | |
 | Venues the verifier checked | 2 | 4 | |
 | Outcome | Silent, correctly, 5 of 5 | Silent, correctly, 5 of 5 | |
 
-Cost is given as a share, not in money: the trace exports mark this model `pricing_status:
-unpriced`, and the neatlogs app shows about $0.0001 per model call, too coarse to compare.
-Tokens fell by about two thirds on the same model, so cost fell by the same share.
+Cost is what OpenRouter billed for those calls: three calls before ($0.000084, $0.000084 and
+$0.000088) and one after. neatlogs marks this model `pricing_status: unpriced`, so the money
+figure comes from the OpenRouter activity export, not the trace.
 
 How the fix came about:
 
