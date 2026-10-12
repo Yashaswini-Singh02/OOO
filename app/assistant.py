@@ -508,9 +508,13 @@ def handle(
     if message.get("image"):
         # the photo is packed already; what is left of the caption is facts, and where to wear it
         tells = [s for s in steps if s.intent in TELLS and s.intent != "pack"]
-        for plan in (s for s in steps if s.intent == "trip_plan" and s.city):
-            # "what do I do with my days in X" also says where they are
-            tells.insert(0, Intent(intent="set_trip", city=plan.city, days_left=plan.days_left))
+        if not any(s.intent == "set_trip" and s.city for s in tells):
+            # "what do I do with my days in X" also says where they are, whichever step the
+            # town was read into (a plan, a request for outfits, a search)
+            named = next((s for s in steps if s.city), None)
+            if named:
+                days = next((s.days_left for s in steps if s.days_left is not None), None)
+                tells.insert(0, Intent(intent="set_trip", city=named.city, days_left=days))
         steps = tells + [Intent(intent="outfits")]
     # everything the message tells us is taken in first, each with a one-line confirmation;
     # the last step gets the full reply
