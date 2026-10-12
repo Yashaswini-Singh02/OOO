@@ -65,6 +65,14 @@ class ScoutTest(unittest.TestCase):
         self.assertEqual(seen[0][:2], ["viewpoint", "waterfall"])
         self.assertIn("restaurant", seen[0])
 
+    def test_backdrops_for_an_outfit_are_not_judged_by_whether_they_are_open_this_minute(self):
+        with patch.object(scout_module, "plan_queries", return_value=QUERIES):
+            now = scout({**CONTEXT, "replans": 0})
+            outfit = scout({**CONTEXT, "replans": 0, "purpose": "outfit"})
+        # the fixture has places closed at 09:00; for a nudge that is a refusal, for a backdrop it is unknown
+        self.assertIn(False, [c["open_now"] for c in now["candidates"]])
+        self.assertEqual({c["open_now"] for c in outfit["candidates"]}, {None})
+
     def test_a_plain_attraction_is_not_tagged_as_a_sunset_spot(self):
         from app import providers
         temple = {"displayName": {"text": "Jagdish Temple"}, "types": ["hindu_temple", "tourist_attraction"]}

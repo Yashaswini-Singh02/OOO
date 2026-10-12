@@ -348,7 +348,7 @@ def _plan_trip(conn: sqlite3.Connection, city: str, days: int, now: str, run: Ca
     )
 
 
-BACKDROPS = 8  # how many verified places the stylist may choose between
+BACKDROPS = 20  # how many verified places the stylist may choose between
 REEL_PLACES = 2  # places whose reels are looked up for one reply: each new place costs a search
 PLAN_OFFER = "Want me to plan the rest of your {days} too? Tell me what you're into, or just say yes."
 

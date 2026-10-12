@@ -247,7 +247,7 @@ def scout(state: RoveState) -> dict:
             state.get("district", ""), *event_window(state), state.get("lat", 0.0), state.get("lng", 0.0)
         )
     candidates = [localise(c, state) for c in places + events]
-    if state.get("trigger") == "trip":
+    if state.get("trigger") == "trip" or state.get("purpose") == "outfit":
         # the visit is on another day, so whether a place is open this minute says nothing
         candidates = [{**c, "open_now": None} for c in candidates]
 
