@@ -1,0 +1,40 @@
+pushed, now write the video script. but for that this what my mentor told me OOO sounds fun 😊‚ honestly I'm eager to try it.. the "stays quiet if nothing passes" part is your best idea, so make that visible. in the demo, show one suggestion getting rejected (closed, or not where the reel says) and the agent moving on. that's your recovery and self-check proof in one shot.
+
+keep the scope tight: one city, one trip, start to finish. and keep posting with #neatHack . so let's first test it and then create a banger video with all the hooks landing in. there is one demo video too , let me also share that here 
+
+<pasted_content id="4a0a">
+
+We were looking at your traces while you were building your agents. We have a feature that lets you look at your critical incidents, and you need to show how it helped indentify and solve these incidents.
+
+I've attached a demo video on how you can use this feature: https://drive.google.com/file/d/REDACTED/view?usp=sharing
+
+Meanwhile, for your overall demo video submission, in ONE video, you should talk about:
+
+the problem your agent solves
+how cfo.ai and entire were part of the project
+how neatlogs was used to identify and resolve the incidents your agent ran into
+</pasted_content id="4a0a">
+
+---
+
+[Image #59] this is the bell icon's findings and /Users/yashaswini/Downloads/neatlogs-incident-intro.mov the video
+
+---
+
+[Image #60] [Image #61]
+
+---
+
+the demo needs to be of udaipur not goa first thing is that.  [Image #62] it replied with this why when earlier it was able to find a place, that dress works in a good restraunt like jag mandir or upre or jagat niwas
+
+---
+
+[Image #63] still the same response.
+
+---
+
+[Image #64] yes now it worked
+
+---
+
+and the changes we did are also fine?
