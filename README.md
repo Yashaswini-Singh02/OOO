@@ -28,6 +28,21 @@ trigger → scout → taste → budget → wardrobe → planner → verifier ─
 The traveller talks to it over Telegram (`app/telegram.py`). Location updates go through
 `app/runtime.py`, which the simulator and the live bot both call.
 
+## What you can say to it
+
+Sent to the bot on Telegram, live, for a trip to Udaipur:
+
+- A photo of a dress with "I'm in Udaipur for two days and I packed this dress. Tell me what to
+  do with my days and where to wear it". It reads the photo, then matches the dress to a verified
+  place with a shot idea and a reel. Outfits are never matched to a temple or other place of
+  worship.
+- "Yes, plan my two days". A day-by-day plan of real, currently operating places.
+- "Anything worth going to right now?" It asks what you are in the mood for, then suggests one
+  place that is open now, having refused the ones that are closed.
+- "I love sunsets and rooftop dinners, and I'm not into temples". It remembers, and later plans
+  change to fit.
+- `/forget` wipes everything it knows about you.
+
 ## Run it
 
 ```
@@ -35,14 +50,15 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env        # fill in NEATLOGS_API_KEY and OPENROUTER_API_KEY
 
-python -m unittest discover -s tests          # 104 tests, no network
+python -m unittest discover -s tests          # 107 tests, no network
 python -m app.graph goa_2day                  # the Goa two-day conflict, on fixtures
 OO_SCENARIO=closed python -m app.graph        # every venue in range must be refused
-python -m app.telegram                        # the chat bot (needs TELEGRAM_BOT_TOKEN)
+OO_FIXTURES=0 python -m app.telegram          # the chat bot, live (needs TELEGRAM_BOT_TOKEN and GOOGLE_API_KEY)
 ```
 
-`OO_FIXTURES=1` (the default) reads from `fixtures/`. `OO_FIXTURES=0` uses the live providers
-listed in `.env.example`.
+`OO_FIXTURES=1` (the default) reads from `fixtures/`, which hold a Goa demo. `OO_FIXTURES=0` uses
+the live providers listed in `.env.example` and works for any town. Start the bot without it and
+it only knows the Goa fixtures.
 
 ## neatlogs evidence
 
@@ -105,7 +121,25 @@ the patch (01:04) and not the same input run after it (01:54 to 01:55). Chat run
 
 ![Venue refused: closed, 88 verifier steps flagged](evidence/detection-venue-refused-closed.png)
 
-### Screenshots
+### The incident
+
+neatlogs raised a main concern on the project's home page for 11 to 12 Oct: the time for 95% of
+recorded requests to finish more than doubled, from 4.00 s to 10.89 s. The slow runs it pointed
+to, flagged by "Too many model calls in one run", are what led to the replan fix above. The fix
+addresses the cause found in those runs; the photo path in chat, which makes several model calls
+by design, is still the slowest part.
+
+## Entire
+
+Entire was enabled before the first real commit, so every commit since carries a checkpoint
+with the agent session behind it (`entire checkpoint list`). The fix commit `05ea6d0` is
+checkpoint `01M4P95QFYBZCETGSRHD212NQ0`: `entire checkpoint explain 01M4P95QFYBZCETGSRHD212NQ0`
+replays the session in which the neatlogs finding became the patch. The repo also has
+entire-graph installed ([`.entire/graph-agent.md`](.entire/graph-agent.md)), which the coding
+agent used to locate code before each change.
+
+## neatlogs screenshots
+
 
 Run 1, before the fix: 38 steps and 5.4 s. The first model call asks for a sunset spot within
 15 km; the two replans further down repeat it.

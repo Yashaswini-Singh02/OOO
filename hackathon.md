@@ -98,3 +98,9 @@ it. 3.2 s, 34 spans, one model call (935 tokens). The replan itself took 4 ms an
   the place search is the one lookup the app does not cache. A second cfo.ai scenario, "Cached
   lookups", models an 80% cut (a target, not built or measured): the $3 plan goes from 16% to
   72% gross margin. Caching the place search by area is the next thing to build.
+- Fixes found while rehearsing the live Udaipur demo: outfits are matched to places without
+  judging them by whether they are open this minute, and never to a temple; an outfit is shown
+  by its name, not its id; an open "anything worth going to?" gets a question about mood; the
+  town in a photo's caption is kept whichever part of the message named it. The bot must be
+  started with `OO_FIXTURES=0` to work outside the Goa fixtures.
+
