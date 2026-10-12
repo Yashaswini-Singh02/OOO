@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4RBY960HE7KQ3JCRY1JTTE3",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 8,
+  "files_touched": [
+    "app/assistant.py",
+    "app/messages.py",
+    "app/nodes/wardrobe.py",
+    "app/providers.py",
+    "tests/test_assistant.py",
+    "tests/test_wardrobe.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 62,
+    "cache_creation_tokens": 52910,
+    "cache_read_tokens": 9927123,
+    "output_tokens": 25612,
+    "api_call_count": 22
+  }
+}
